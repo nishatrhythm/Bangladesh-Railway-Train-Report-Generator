@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Home | Bangladesh Railway Train Report Generator</title>
+    <!-- SEO Meta Tags -->
+    <meta name="description"
+        content="Generate comprehensive PDF reports for Bangladesh Railway trains. Search trains by route, view detailed train information, and create downloadable reports with schedules and route data.">
+    <meta name="keywords"
+        content="Bangladesh Railway, train report generator, train information, PDF reports, railway schedule, train search, Bangladesh trains, BR trains, railway data">
+    <meta name="author" content="Nishat Mahmud">
+    <meta name="publish_date" content="2025-06-23" scheme="YYYY-MM-DD">
+    <!-- Open Graph Meta Tags -->
+    <meta property="og:title" content="Bangladesh Railway Train Report Generator">
+    <meta property="og:description"
+        content="Generate comprehensive PDF reports for Bangladesh Railway trains. Search trains by route and create detailed downloadable reports.">
+    <meta property="og:image"
+        content="https://raw.githubusercontent.com/nishatrhythm/Bangladesh-Railway-Train-Report-Generator/main/images/link_share_image.png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:url" content="https://trainreport.onrender.com">
+    <meta property="og:type" content="website">
+
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link rel="icon"
+        href="https://raw.githubusercontent.com/nishatrhythm/Bangladesh-Railway-Train-and-Fare-List-with-Route-Map/main/images/bangladesh-railway.png">
+    <link rel="stylesheet" href="/static/css/styles.css">
+    <script id="app-config" type="application/json">
+        {{ CONFIG | tojson | safe }}
+    </script>
+    <!-- Trains Data with App Version -->
+    <script id="trains-data" type="application/json">
+        {"trains": {{ trains | tojson | safe }}, "trains_full": {{ trains_full | tojson | safe }}, "version": "{{ app_version }}"}
+    </script>
+    <!-- Stations Data with App Version -->
+    <script id="stations-data" type="application/json">
+        {"stations": {{ stations | tojson | safe }}, "version": "{{ app_version }}"}
+    </script>
+</head>
+
+<body>
+    <div class="flyout-notification" id="flyoutNotification">
+        <span id="flyoutMessage"></span>
+        <i class="fas fa-times flyout-close" id="flyoutClose"></i>
+    </div>
+    <noscript>
+        <div class="container noscript-warning">
+            <h2><i class="fas fa-exclamation-circle"></i> Please Enable JavaScript</h2>
+            <p>This website requires JavaScript to function properly. Enable it in your browser settings to access full
+                functionality and check train seat availability.</p>
+            <div class="instructions">
+                <strong>How to enable:</strong> Go to your browser settings > Privacy/Security > Enable JavaScript.
+                Refresh the page after enabling.
+            </div>
+        </div>
+    </noscript>
+
+    <div class="container main-content">
+        <h1><i class="fas fa-subway"></i> BR Train Report Generator</h1><br>
+
+        {% if error %}
+        <div class="error shake">
+            <i class="fas fa-exclamation-circle error-icon"></i> {{ error }}
+        </div>
+        {% endif %}
+
+        <!-- Train Search Collapsible Section -->
+        <div class="collapsible-section">
+            <button type="button" class="collapsible-toggle" data-target="trainSearchContent">
+                <i class="fas fa-chevron-down"></i> Expand to view Train Search
+            </button>
+            <div class="collapsible-content" id="trainSearchContent">
+                <div class="train-search-form">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="searchOrigin">Origin Station</label>
+                            <div class="input-with-icon">
+                                <i class="fas fa-train input-icon"></i>
+                                <input type="text" id="searchOrigin" name="searchOrigin"
+                                    placeholder="Enter an origin station" autocomplete="off">
+                                <i class="fas fa-times clear-icon" id="searchOriginClear"></i>
+                                <div id="searchOriginDropdown" class="custom-dropdown"></div>
+                            </div>
+                            <span class="error-message" id="searchOrigin-error">Origin station is required</span>
+                        </div>
+                        <div class="home-swap-icon-wrapper" id="trainSearchSwapIcon">
+                            <i class="fas fa-exchange-alt swap-icon"></i>
+                        </div>
+                        <div class="form-group">
+                            <label for="searchDestination">Destination Station</label>
+                            <div class="input-with-icon">
+                                <i class="fas fa-train input-icon"></i>
+                                <input type="text" id="searchDestination" name="searchDestination"
+                                    placeholder="Enter a destination station" autocomplete="off">
+                                <i class="fas fa-times clear-icon" id="searchDestinationClear"></i>
+                                <div id="searchDestinationDropdown" class="custom-dropdown"></div>
+                            </div>
+                            <span class="error-message" id="searchDestination-error">Destination station is
+                                required</span>
+                        </div>
+                    </div>
+                    <div class="form-group submit-btn">
+                        <button type="button" class="btn-primary" id="seeTrainListBtn">
+                            <i class="fas fa-list"></i> View Train List
+                        </button>
+                    </div>
+                    <div id="trainSearchError" class="train-search-error" style="display: none;">
+                        <!-- Error messages from search_trains route will be displayed here -->
+                    </div>
+                    <div id="trainSearchResults" class="train-results" style="display: none;">
+                        <div class="train-results-header">
+                            <h3><i class="fas fa-train"></i> Available Trains</h3>
+                            <p class="train-instruction-text"><i class="fas fa-hand-pointer"></i> Click or tap on a
+                                train name to insert it into the train name field</p>
+                        </div>
+                        <div id="trainList" class="train-list"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <form action="/report" method="POST" id="reportForm">
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="train_model">Train Name</label>
+                    <div class="input-with-icon custom-dropdown" id="train-model-dropdown">
+                        <i class="fas fa-train input-icon"></i>
+                        <input type="text" id="train-model-input" placeholder="Enter train name" autocomplete="off"
+                            value="{{ form_values.train_model if form_values else '' }}">
+                        <i class="fas fa-times clear-icon" id="train-model-clear"></i>
+                        <input type="hidden" id="train_model" name="train_model"
+                            value="{{ form_values.train_model if form_values else '' }}">
+                        <div class="dropdown-menu" id="train-model-menu" style="display: none;">
+                            <div class="dropdown-options" id="train-model-options">
+                                {% for train in trains_full %}
+                                <div class="dropdown-option" data-value="{{ train.train_name }}"
+                                    data-origin="{{ train.origin_city }}"
+                                    data-destination="{{ train.destination_city }}" data-zone="{{ train.zone }}">
+                                    <div class="train-info">
+                                        <div class="train-name">{{ train.train_name }}</div>
+                                        <div class="train-route-container">
+                                            <div class="train-route">{{ train.origin_city }} → {{ train.destination_city
+                                                }}</div>
+                                            <div class="train-zone">{{ train.zone }}</div>
+                                        </div>
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    </div>
+                    <span class="error-message" id="train_model-error">Train model is required</span>
+                </div>
+                <div class="form-group">
+                    <label for="date">Date for Report</label>
+                    <div class="input-with-icon">
+                        <i class="fas fa-calendar-alt input-icon"></i>
+                        <input type="text" id="date" name="date" readonly placeholder="Select a date"
+                            value="{{ form_values.date if form_values else '' }}" data-min-date="{{ min_date }}"
+                            data-max-date="{{ max_date }}" data-bst-midnight-utc="{{ bst_midnight_utc }}" />
+                        <div class="calendar-dialog" id="materialCalendar" style="display: none;">
+                            <div class="calendar-header">
+                                <button type="button" class="calendar-nav prev" id="prevMonthBtn">❮</button>
+                                <div class="calendar-month-year" id="calendarTitle"></div>
+                                <button type="button" class="calendar-nav next" id="nextMonthBtn">❯</button>
+                            </div>
+                            <div class="calendar-grid">
+                                <div class="calendar-weekdays">
+                                    <span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span>
+                                </div>
+                                <div class="calendar-days" id="calendarDays"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <span class="error-message" id="date-error">Date of journey is required</span>
+                </div>
+            </div>
+            <div class="form-group submit-btn">
+                <button type="submit" class="btn-primary">
+                    <i class="fas fa-file-pdf"></i> Generate Train Report
+                </button>
+            </div>
+        </form>
+        <footer class="new-footer">
+            <p>This project is open source. Check it out on <a
+                    href="https://github.com/nishatrhythm/Bangladesh-Railway-Train-Report-Generator"
+                    target="_blank">GitHub</a>.</p>
+        </footer>
+
+        <div class="footer-links">
+            <a href="https://trainseat.onrender.com" target="_blank">Seat Availability</a>
+            <span class="dot">•</span>
+            <a href="https://bdrailway.vercel.app" target="_blank">Train Fare</a>
+            <span class="dot">•</span>
+            <a href="https://forms.gle/NV72PC1z75sq77tg7" target="_blank">Feedback</a>
+            <br><br>
+            <div class="legal-links">
+                <a href="#" onclick="openModal('termsModal', event)">Terms and Conditions</a>
+                <span class="dot">|</span>
+                <a href="#" onclick="openModal('privacyModal', event)">Privacy Policy</a>
+            </div>
+        </div>
+
+        {% if is_banner_enabled %}
+        <div id="bannerModal" class="modal">
+            <div class="modal-content">
+                <span class="close-modal"><i class="fas fa-times"></i></span>
+                <div id="bannerImageContainer"></div>
+                <div class="modal-footer">
+                    <label class="custom-checkbox">
+                        <input type="checkbox" id="dontShowAgain">
+                        <span class="checkmark"></span>
+                        Don't show this again
+                    </label>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Terms and Conditions Modal -->
+        <div id="termsModal" class="legal-modal">
+            <div class="legal-modal-content">
+                <span class="legal-close" onclick="closeModal('termsModal')">&times;</span>
+                <div class="legal-modal-body">
+                    <h2>Terms and Conditions</h2>
+                    <p><strong>Effective Date:</strong> June 23, 2025</p>
+                    <hr>
+
+                    <h3>1. Introduction</h3>
+                    <p>Welcome to the Bangladesh Railway Train Report Generator. By accessing or using our
+                        Service, you agree to be bound by these Terms.</p>
+
+                    <h3>2. Description of Service</h3>
+                    <p>The Bangladesh Railway Train Report Generator provides:</p>
+                    <ul>
+                        <li><strong>Train Information Reports:</strong> Comprehensive train details including schedules,
+                            routes, and general information</li>
+                        <li><strong>Train Search Functionality:</strong> Search for trains between origin and
+                            destination stations</li>
+                        <li><strong>PDF Report Generation:</strong> Generate downloadable PDF reports with train
+                            information</li>
+                        <li><strong>Interactive Interface:</strong> User-friendly tools for train selection and report
+                            generation</li>
+                        <li><strong>No Authentication Required:</strong> Open access to all functionality without user
+                            registration</li>
+                    </ul>
+
+                    <h3>3. Acceptable Use</h3>
+                    <p><strong>Permitted Uses:</strong></p>
+                    <ul>
+                        <li>Personal travel planning and research</li>
+                        <li>Educational purposes</li>
+                        <li>Non-commercial information gathering</li>
+                        <li>Generating train information reports for reference</li>
+                    </ul>
+
+                    <p><strong>Prohibited Uses:</strong></p>
+                    <ul>
+                        <li>Any unlawful purpose or to solicit others to perform unlawful acts</li>
+                        <li>Violating any international, federal, provincial, or state regulations</li>
+                        <li>Transmitting advertising or promotional material without written consent</li>
+                        <li>Impersonating the company, employees, or other users</li>
+                        <li>Automated scraping or bulk data extraction</li>
+                        <li>Commercial use of data without explicit permission</li>
+                    </ul>
+
+                    <h3>4. Data Sources</h3>
+                    <p>Our Service utilizes publicly available information about Bangladesh Railway trains including:
+                    </p>
+                    <ul>
+                        <li>Train schedules and route information</li>
+                        <li>Station data and connectivity information</li>
+                        <li>General train service details</li>
+                    </ul>
+
+                    <h3>5. Disclaimer of Warranties</h3>
+                    <p>This Service is provided "as is" without any representations or warranties. We do not guarantee:
+                    </p>
+                    <ul>
+                        <li>Accuracy, completeness, or timeliness of train information</li>
+                        <li>Uninterrupted or error-free operation</li>
+                        <li>Compatibility with all devices or browsers</li>
+                        <li>Current availability of train services</li>
+                    </ul>
+
+                    <h3>6. Limitation of Liability</h3>
+                    <p>We shall not be liable for any indirect, incidental, special, consequential, or punitive damages
+                        resulting from your use of the Service.</p>
+                    <h3>7. Contact Information</h3>
+                    <p>For questions about these Terms, please contact us through our <a
+                            href="https://forms.gle/NV72PC1z75sq77tg7" target="_blank">feedback form</a>.</p>
+
+                    <hr>
+                    <p><strong>By using this website, you acknowledge that you have read, understood, and agree to be
+                            bound by these Terms and Conditions.</strong></p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Privacy Policy Modal -->
+        <div id="privacyModal" class="legal-modal">
+            <div class="legal-modal-content">
+                <span class="legal-close" onclick="closeModal('privacyModal')">&times;</span>
+                <div class="legal-modal-body">
+                    <h2>Privacy Policy</h2>
+                    <p><strong>Effective Date:</strong> June 23, 2025</p>
+                    <hr>
+
+                    <h3>1. Introduction</h3>
+                    <p>This Privacy Policy describes how the Bangladesh Railway Train Report Generator
+                        collects, uses, and protects your information.</p>
+
+                    <h3>2. Information We Do NOT Collect</h3>
+                    <p><strong>No Personal Data Collection:</strong></p>
+                    <ul>
+                        <li>No user registration or account creation required</li>
+                        <li>No personal identification information collected</li>
+                        <li>No email addresses, phone numbers, or contact details stored</li>
+                        <li>No payment or financial information processed</li>
+                        <li>No location tracking or GPS data collected</li>
+                        <li>No biometric or sensitive personal data gathered</li>
+                    </ul>
+
+                    <h3>3. Technical Information</h3>
+                    <p><strong>Minimal Technical Data:</strong></p>
+                    <ul>
+                        <li><strong>Form Input:</strong> Temporary processing of train names and dates for report
+                            generation</li>
+                        <li><strong>Server Logs:</strong> Basic access logs for debugging and performance monitoring
+                        </li>
+                        <li><strong>Session Data:</strong> Temporary data stored in browser session (not persistent)
+                        </li>
+                        <li><strong>Error Tracking:</strong> Anonymous error logs to improve service stability</li>
+                    </ul>
+
+                    <h3>4. Data Processing</h3>
+                    <p><strong>Report Generation:</strong></p>
+                    <ul>
+                        <li><strong>Train Information:</strong> Selected train names and dates are processed to generate
+                            PDF reports</li>
+                        <li><strong>Search Queries:</strong> Train search queries between stations are processed
+                            temporarily</li>
+                        <li><strong>No Data Storage:</strong> Form submissions and search queries are not permanently
+                            stored</li>
+                    </ul>
+
+                    <h3>5. Local Storage</h3>
+                    <p><strong>Browser-Based Storage:</strong></p>
+                    <ul>
+                        <li><strong>Session Storage:</strong> Temporary form data and search preferences</li>
+                        <li><strong>Local Storage:</strong> User interface preferences and notification settings</li>
+                        <li><strong>Cookies:</strong> Essential cookies only for basic functionality</li>
+                    </ul>
+
+                    <h3>6. Data Security</h3>
+                    <p><strong>Security Measures:</strong></p>
+                    <ul>
+                        <li>All data transmission over HTTPS encryption</li>
+                        <li>No permanent storage of user inputs or personal data</li>
+                        <li>Rate limiting to prevent abuse and protect user privacy</li>
+                        <li>Regular security updates and monitoring</li>
+                    </ul>
+
+                    <h3>7. Open Source Transparency</h3>
+                    <p>This application is open source. You can review our code and privacy practices on <a
+                            href="https://github.com/nishatrhythm/Bangladesh-Railway-Train-Report-Generator"
+                            target="_blank">GitHub</a>.</p>
+
+                    <h3>8. Changes to This Policy</h3>
+                    <p>We may update this Privacy Policy from time to time. Changes will be reflected by updating the
+                        "Effective Date" at the top of this policy.</p>
+                    <h3>9. Contact Us</h3>
+                    <p>If you have questions about this Privacy Policy, please contact us through our <a
+                            href="https://forms.gle/NV72PC1z75sq77tg7" target="_blank">feedback form</a>.</p>
+
+                    <hr>
+                    <p><strong>By using this website, you acknowledge that you have read, understood, and agree to abide
+                            by this Privacy Policy.</strong></p>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="/static/js/script.js"></script>
+    <script>
+        sessionStorage.removeItem('queuePageVisited');
+        sessionStorage.removeItem('queueRedirecting');
+        sessionStorage.removeItem('lastStatusCheck');
+        window.bannerImageUrl = "{{ banner_image | safe }}";
+    </script>
+</body>
+
+</html>

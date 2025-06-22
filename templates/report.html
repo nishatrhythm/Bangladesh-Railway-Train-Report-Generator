@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Download Report | Train Report Generator</title>
+    <link rel="icon"
+        href="https://raw.githubusercontent.com/nishatrhythm/Bangladesh-Railway-Train-and-Fare-List-with-Route-Map/main/images/bangladesh-railway.png">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="/static/css/styles.css">
+</head>
+
+<body>
+    <div class="flyout-notification" id="flyoutNotification">
+        <span id="flyoutMessage"></span>
+        <i class="fas fa-times flyout-close" id="flyoutClose"></i>
+    </div>
+    <noscript>
+        <div class="container noscript-warning">
+            <h2><i class="fas fa-exclamation-circle"></i> Please Enable JavaScript</h2>
+            <p>This website requires JavaScript to function properly. Enable it in your browser settings to access full
+                functionality and check train seat availability.</p>
+            <div class="instructions">
+                <strong>How to enable:</strong> Go to your browser settings > Privacy/Security > Enable JavaScript.
+                Refresh the page after enabling.
+            </div>
+        </div>
+    </noscript>
+
+    <div class="container">
+        <h1><i class="fas fa-subway"></i> BR Train Report Generator</h1><br>
+        <div class="queue-header">
+            <h2><i class="fas fa-file-pdf"></i> Report Details</h2>
+            <p><i class="fas fa-train"></i> {{ form_values.train_model }}</p>
+            <p><i class="fas fa-calendar-alt"></i> {{ form_values.date }}</p>
+        </div>
+
+        <div class="download-section">
+            <button id="downloadBtn" class="download-btn" onclick="generateReport()">
+                <i id="btnIcon" class="fas fa-download"></i>
+                <span id="btnText">Download PDF Report</span>
+            </button>
+
+            <div id="statusMessage" class="status-message"></div>
+        </div>
+
+        <div class="note">
+            <span class="note-bold highlight">Disclaimer:</span> The data in this report may not be fully accurate and
+            not affiliated by Bangladesh Railway. Please verify and cross-check all information before using it.
+        </div><br>
+        <a href="/" class="cancel-btn back-btn">
+            <i class="fas fa-arrow-left"></i>
+            Back to Home
+        </a>
+    </div>
+    <script>
+        setTimeout(function() {
+            window.location.href = '/';
+        }, 120000);
+    </script>
+    <script>
+        let isGenerating = false;
+
+        function generateReport() {
+            if (isGenerating) return;
+
+            isGenerating = true;
+            const btn = document.getElementById('downloadBtn');
+            const btnIcon = document.getElementById('btnIcon');
+            const btnText = document.getElementById('btnText');
+            const statusMessage = document.getElementById('statusMessage');
+
+            btn.classList.add('processing');
+            btnIcon.className = 'loading-spinner';
+            btnText.innerHTML = 'Generating Report...';
+
+            showMessage('Checking for existing report or generating new one. This may take a few minutes...', 'info');
+
+            fetch('/generate_report_api', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    train_model: '{{ form_values.train_model }}',
+                    date: '{{ form_values.date }}'
+                })
+            })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        showMessage('Report generated successfully! Download will start automatically.', 'success');
+
+                        const link = document.createElement('a');
+                        link.href = '/download_report/' + data.filename;
+                        link.download = data.filename;
+                        link.click();
+                    } else {
+                        showMessage('Error generating report: ' + data.error, 'error');
+                    }
+                    resetButton();
+                })
+                .catch(error => {
+                    showMessage('Network error: ' + error.message, 'error');
+                    resetButton();
+                });
+        }
+
+        function showMessage(text, type) {
+            const statusMessage = document.getElementById('statusMessage');
+            statusMessage.className = 'status-message status-' + type;
+
+            let icon = '';
+            if (type === 'success') {
+                icon = '<i class="fas fa-check-circle"></i>';
+            } else if (type === 'error') {
+                icon = '<i class="fas fa-exclamation-circle"></i>';
+            } else if (type === 'info') {
+                icon = '<i class="fas fa-info-circle"></i>';
+            }
+
+            statusMessage.innerHTML = icon + text;
+            statusMessage.style.display = 'flex';
+        }
+
+        function resetButton() {
+            isGenerating = false;
+            const btn = document.getElementById('downloadBtn');
+            const btnIcon = document.getElementById('btnIcon');
+            const btnText = document.getElementById('btnText');
+
+            btn.classList.remove('processing');
+            btnIcon.className = 'fas fa-download';
+            btnText.innerHTML = 'Download PDF Report';
+        }
+
+        document.addEventListener('DOMContentLoaded', function () {
+            setTimeout(() => {
+                const successMessages = document.querySelectorAll('.status-success');
+                successMessages.forEach(msg => {
+                    if (msg.style.display !== 'none') {
+                        msg.style.display = 'none';
+                    }
+                });
+            }, 5000);
+        });
+    </script>
+    <script src="/static/js/script.js"></script>
+</body>
+
+</html>
