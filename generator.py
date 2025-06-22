@@ -329,8 +329,19 @@ def create_route_summary_data(issued_matrices: Dict, stations: List[str]) -> Dic
     
     return route_summary, seat_types_with_data
 
-def generate_pdf_report(issued_matrices: Dict, stations: List[str], train_data: Dict, config: Dict):
+def format_seat_list(seats: List[str], for_pdf: bool = False) -> str:
+    if not seats:
+        return "None"
     
+    seat_str = ", ".join(seats)
+    if for_pdf:
+        wrapped_lines = textwrap.wrap(seat_str, width=60)
+        return wrapped_lines
+    else:
+        wrapped = textwrap.fill(seat_str, width=60)
+        return wrapped
+
+def generate_pdf_report(issued_matrices: Dict, stations: List[str], train_data: Dict, config: Dict):
     if not REPORTLAB_AVAILABLE:
         print(f"{Fore.RED}Cannot generate PDF: reportlab library not installed")
         print(f"{Fore.YELLOW}Install with: pip install reportlab")
@@ -354,15 +365,18 @@ def generate_pdf_report(issued_matrices: Dict, stations: List[str], train_data: 
         bold_font = 'Helvetica-Bold'
     
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"bdrailway_issued_tickets_report_{config['train_model']}_{timestamp}.pdf"
-    
+    filename = f"BDRAILWAY_ISSUED_TICKETS_REPORT_{config['train_model']}_{timestamp}.pdf"
     print(f"\n{Fore.CYAN}Generating PDF report: {filename}")
     
     try:
-        doc = SimpleDocTemplate(filename, pagesize=A4, 
-                              rightMargin=50, leftMargin=50, 
-                              topMargin=50, bottomMargin=70)
-        
+        doc = SimpleDocTemplate(
+            filename,
+            pagesize=A4,
+            rightMargin=50,
+            leftMargin=50,
+            topMargin=50,
+            bottomMargin=70
+        )
         custom_green = colors.Color(0x00/255.0, 0x67/255.0, 0x47/255.0)
         light_green = colors.Color(0xE8/255.0, 0xF5/255.0, 0xF0/255.0)
         
@@ -411,11 +425,6 @@ def generate_pdf_report(issued_matrices: Dict, stations: List[str], train_data: 
             leftIndent=20,
             fontName=regular_font
         )
-        
-        story = []
-        
-        story.append(Paragraph("BANGLADESH RAILWAY ISSUED TICKETS REPORT", title_style))
-        story.append(Spacer(1, 1))
 
         disclaimer_style = ParagraphStyle(
             'DisclaimerStyle',
@@ -430,6 +439,10 @@ def generate_pdf_report(issued_matrices: Dict, stations: List[str], train_data: 
             alignment=1,
             backColor=colors.Color(1.0, 0.95, 0.95)
         )
+        
+        story = []
+        story.append(Paragraph("BANGLADESH RAILWAY ISSUED TICKETS REPORT", title_style))
+        story.append(Spacer(1, 1))
         
         disclaimer_text = "The data in this report may not be fully accurate and not affiliated by Bangladesh Railway. Please verify and cross-check all information before using it."
         story.append(Paragraph(disclaimer_text, disclaimer_style))
@@ -696,35 +709,53 @@ def generate_pdf_report(issued_matrices: Dict, stations: List[str], train_data: 
                             issued_seats = issued_matrices[seat_type][from_city][to_city]
                             if issued_seats:
                                 seat_count = len(issued_seats)
-                                seat_str = ", ".join(issued_seats)
+                                seat_lines = format_seat_list(issued_seats, for_pdf=True)
                                 
-                                from_para = Paragraph(from_city, ParagraphStyle('CellStyle',
-                                                                               parent=styles['Normal'],
-                                                                               fontSize=9,
-                                                                               alignment=1,
-                                                                               fontName=regular_font))
-                                to_para = Paragraph(to_city, ParagraphStyle('CellStyle',
-                                                                           parent=styles['Normal'],
-                                                                           fontSize=9,
-                                                                           alignment=1,
-                                                                           fontName=regular_font))
-                                count_para = Paragraph(str(seat_count), ParagraphStyle('CellStyle',
-                                                                                      parent=styles['Normal'],
-                                                                                      fontSize=9,
-                                                                                      alignment=1,
-                                                                                      fontName=bold_font))
-                                seats_para = Paragraph(seat_str, ParagraphStyle('SeatStyle',
-                                                                               parent=styles['Normal'],
-                                                                               fontSize=8,
-                                                                               alignment=0,
-                                                                               fontName=regular_font))
+                                lines_per_page = 40
                                 
-                                table_data.append([from_para, to_para, count_para, seats_para])
+                                for i in range(0, len(seat_lines), lines_per_page):
+                                    chunk_lines = seat_lines[i:i + lines_per_page]
+                                    seat_str = "\n".join(chunk_lines)
+                                    
+                                    from_para = Paragraph(
+                                        from_city if i == 0 else f"{from_city} (cont.)",
+                                        ParagraphStyle('CellStyle',
+                                                       parent=styles['Normal'],
+                                                       fontSize=9,
+                                                       alignment=1,
+                                                       fontName=regular_font)
+                                    )
+                                    to_para = Paragraph(
+                                        to_city if i == 0 else f"{to_city} (cont.)",
+                                        ParagraphStyle('CellStyle',
+                                                       parent=styles['Normal'],
+                                                       fontSize=9,
+                                                       alignment=1,
+                                                       fontName=regular_font)
+                                    )
+                                    count_para = Paragraph(
+                                        str(seat_count) if i == 0 else "",
+                                        ParagraphStyle('CellStyle',
+                                                       parent=styles['Normal'],
+                                                       fontSize=9,
+                                                       alignment=1,
+                                                       fontName=bold_font)
+                                    )
+                                    seats_para = Paragraph(
+                                        seat_str,
+                                        ParagraphStyle('SeatStyle',
+                                                       parent=styles['Normal'],
+                                                       fontSize=8,
+                                                       alignment=0,
+                                                       fontName=regular_font,
+                                                       leading=10)
+                                    )
+                                    
+                                    table_data.append([from_para, to_para, count_para, seats_para])
                 
                 if len(table_data) > 1:
                     col_widths = [1.3*inch, 1.3*inch, 0.7*inch, 3.7*inch]
-                    
-                    pdf_table = Table(table_data, colWidths=col_widths, repeatRows=1)
+                    pdf_table = Table(table_data, colWidths=col_widths, repeatRows=1, splitByRow=True)
                     pdf_table.setStyle(TableStyle([
                         ('BACKGROUND', (0, 0), (-1, 0), custom_green),
                         ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
@@ -741,7 +772,9 @@ def generate_pdf_report(issued_matrices: Dict, stations: List[str], train_data: 
                         ('RIGHTPADDING', (0, 0), (-1, -1), 8),
                         ('TOPPADDING', (0, 1), (-1, -1), 6),
                         ('BOTTOMPADDING', (0, 1), (-1, -1), 6),
-                        ('BACKGROUND', (0, 1), (-1, -1), colors.white),
+                        ('FONTNAME', (0, 1), (-1, -1), regular_font),
+                        ('FONTSIZE', (0, 1), (2, -1), 9),
+                        ('FONTSIZE', (3, 1), (3, -1), 8),
                         ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, light_green])
                     ]))
                     
@@ -757,14 +790,6 @@ def generate_pdf_report(issued_matrices: Dict, stations: List[str], train_data: 
     except Exception as e:
         print(f"{Fore.RED}Error generating PDF: {str(e)}")
         print(f"{Fore.YELLOW}Please ensure you have reportlab installed: pip install reportlab")
-
-def format_seat_list(seats: List[str]) -> str:
-    if not seats:
-        return "None"
-    
-    seat_str = ", ".join(seats)
-    wrapped = textwrap.fill(seat_str, width=60)
-    return wrapped
 
 def main():
     print(f"{Fore.CYAN}Bangladesh Railway Issued Tickets Report{Style.RESET_ALL}")
