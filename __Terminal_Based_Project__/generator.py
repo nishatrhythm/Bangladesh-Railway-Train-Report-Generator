@@ -302,7 +302,7 @@ class NumberedCanvas(canvas.Canvas):
         page_text = f"Page {page_num} of {total_pages}"
         self.drawCentredString(A4[0]/2, 30, page_text)
 
-def create_route_summary_data(issued_matrices: Dict, stations: List[str]) -> Dict:
+def create_route_summary_data(issued_matrices: Dict, fare_matrices: Dict, stations: List[str]) -> Dict:
     route_summary = {}
     
     seat_types_with_data = []
@@ -322,10 +322,19 @@ def create_route_summary_data(issued_matrices: Dict, stations: List[str]) -> Dic
                 
                 for seat_type in seat_types_with_data:
                     count = 0
+                    fare = 0
                     if (from_station in issued_matrices[seat_type] and 
                         to_station in issued_matrices[seat_type][from_station]):
                         count = len(issued_matrices[seat_type][from_station][to_station])
-                    route_summary[from_station][to_station][seat_type] = count
+                    
+                    if (from_station in fare_matrices[seat_type] and 
+                        to_station in fare_matrices[seat_type][from_station]):
+                        fare = fare_matrices[seat_type][from_station][to_station]
+                    
+                    route_summary[from_station][to_station][seat_type] = {
+                        "count": count,
+                        "fare": fare
+                    }
     
     return route_summary, seat_types_with_data
 
@@ -341,7 +350,7 @@ def format_seat_list(seats: List[str], for_pdf: bool = False) -> str:
         wrapped = textwrap.fill(seat_str, width=60)
         return wrapped
 
-def generate_pdf_report(issued_matrices: Dict, stations: List[str], train_data: Dict, config: Dict):
+def generate_pdf_report(issued_matrices: Dict, fare_matrices: Dict, stations: List[str], train_data: Dict, config: Dict):
     if not REPORTLAB_AVAILABLE:
         print(f"{Fore.RED}Cannot generate PDF: reportlab library not installed")
         print(f"{Fore.YELLOW}Install with: pip install reportlab")
@@ -350,12 +359,16 @@ def generate_pdf_report(issued_matrices: Dict, stations: List[str], train_data: 
     try:
         font_regular_path = os.path.join("assets", "PlusJakartaSans-Regular.ttf")
         font_bold_path = os.path.join("assets", "PlusJakartaSans-Bold.ttf")
-
+        font_bengali_path = os.path.join("assets", "NotoSansBengali-Regular.ttf")
+        
         pdfmetrics.registerFont(TTFont('PlusJakartaSans-Regular', font_regular_path))
         pdfmetrics.registerFont(TTFont('PlusJakartaSans-Bold', font_bold_path))
+        pdfmetrics.registerFont(TTFont('NotoSansBengali-Regular', font_bengali_path))
         
         regular_font = 'PlusJakartaSans-Regular'
         bold_font = 'PlusJakartaSans-Bold'
+        bengali_font = 'NotoSansBengali-Regular'
+        use_taka_symbol = True
         
         print(f"{Fore.GREEN}Custom fonts loaded successfully")
         
@@ -363,6 +376,8 @@ def generate_pdf_report(issued_matrices: Dict, stations: List[str], train_data: 
         print(f"{Fore.YELLOW}Warning: Could not load custom fonts ({str(e)}). Using default fonts.")
         regular_font = 'Helvetica'
         bold_font = 'Helvetica-Bold'
+        bengali_font = 'Helvetica'
+        use_taka_symbol = False
     
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = f"BDRAILWAY_ISSUED_TICKETS_REPORT_{config['train_model']}_{timestamp}.pdf"
@@ -438,6 +453,15 @@ def generate_pdf_report(issued_matrices: Dict, stations: List[str], train_data: 
             fontName=regular_font,
             alignment=1,
             backColor=colors.Color(1.0, 0.95, 0.95)
+        )
+
+        currency_style = ParagraphStyle(
+            'CurrencyStyle',
+            parent=styles['Normal'],
+            fontSize=6,
+            alignment=1,
+            fontName=bengali_font if use_taka_symbol else regular_font,
+            textColor=colors.gray
         )
         
         story = []
@@ -568,7 +592,7 @@ def generate_pdf_report(issued_matrices: Dict, stations: List[str], train_data: 
 
         story.append(PageBreak())
         
-        route_summary, seat_types_with_data = create_route_summary_data(issued_matrices, stations)
+        route_summary, seat_types_with_data = create_route_summary_data(issued_matrices, fare_matrices, stations)
         
         story.append(Paragraph("ROUTE-WISE ISSUED TICKET SUMMARY", title_style))
         story.append(Spacer(1, 5))
@@ -607,45 +631,57 @@ def generate_pdf_report(issued_matrices: Dict, stations: List[str], train_data: 
             header_row = []
             for header in table_headers:
                 header_row.append(Paragraph(header, ParagraphStyle('RouteHeaderStyle',
-                                                                  parent=styles['Normal'],
-                                                                  fontName=bold_font,
-                                                                  fontSize=9,
-                                                                  alignment=1,
-                                                                  textColor=colors.white)))
+                                                                parent=styles['Normal'],
+                                                                fontName=bold_font,
+                                                                fontSize=9,
+                                                                alignment=1,
+                                                                textColor=colors.white)))
             route_table_data.append(header_row)
             
             for from_station in stations:
                 for to_station in stations:
-                    if from_station != to_station and from_station in route_summary:
+                    if from_station != to_station and from_station in route_summary and to_station in route_summary[from_station]:
                         has_tickets = any(
-                            route_summary[from_station][to_station][seat_type] > 0 
+                            route_summary[from_station][to_station][seat_type]["count"] > 0 
                             for seat_type in seat_types_with_data
                         )
                         
                         if has_tickets:
                             row = []
                             row.append(Paragraph(from_station, ParagraphStyle('RouteCellStyle',
-                                                                             parent=styles['Normal'],
-                                                                             fontSize=8,
-                                                                             alignment=1,
-                                                                             fontName=regular_font)))
+                                                                            parent=styles['Normal'],
+                                                                            fontSize=8,
+                                                                            alignment=1,
+                                                                            fontName=regular_font)))
                             row.append(Paragraph(to_station, ParagraphStyle('RouteCellStyle',
-                                                                           parent=styles['Normal'],
-                                                                           fontSize=8,
-                                                                           alignment=1,
-                                                                           fontName=regular_font)))
+                                                                        parent=styles['Normal'],
+                                                                        fontSize=8,
+                                                                        alignment=1,
+                                                                        fontName=regular_font)))
                             
                             for seat_type in seat_types_with_data:
-                                count = route_summary[from_station][to_station][seat_type]
-                                count_text = str(count) if count > 0 else "—"
-                                count_style = ParagraphStyle('RouteCountStyle',
-                                                           parent=styles['Normal'],
-                                                           fontSize=8,
-                                                           alignment=1,
-                                                           fontName=bold_font if count > 0 else regular_font,
-                                                           textColor=colors.black if count > 0 else colors.gray)
+                                count = route_summary[from_station][to_station][seat_type]["count"]
+                                fare = route_summary[from_station][to_station][seat_type]["fare"]
+                                if count > 0:
+                                    if use_taka_symbol:
+                                        count_text = f'<font size="8" color="black" face="{regular_font}">{count}</font><br/><font size="6" color="gray" face="{bengali_font}">৳</font><font size="6" color="gray" face="{regular_font}"> {fare:.0f}</font>'
+                                    else:
+                                        count_text = f'<font size="8" color="black" face="{regular_font}">{count}</font><br/><font size="6" color="gray" face="{regular_font}">BDT {fare:.0f}</font>'
+                                    
+                                    count_style = ParagraphStyle('RouteCountStyle',
+                                                            parent=styles['Normal'],
+                                                            fontSize=8,
+                                                            alignment=1,
+                                                            fontName=regular_font)
+                                else:
+                                    count_text = "—"
+                                    count_style = ParagraphStyle('RouteCountStyle',
+                                                            parent=styles['Normal'],
+                                                            fontSize=8,
+                                                            alignment=1,
+                                                            fontName=regular_font,
+                                                            textColor=colors.gray)
                                 row.append(Paragraph(count_text, count_style))
-                            
                             route_table_data.append(row)
             
             if len(route_table_data) > 1:
@@ -663,12 +699,10 @@ def generate_pdf_report(issued_matrices: Dict, stations: List[str], train_data: 
                     ('FONTSIZE', (0, 0), (-1, 0), 9),
                     ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
                     ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-                    
                     ('BACKGROUND', (0, 1), (-1, -1), colors.white),
                     ('FONTSIZE', (0, 1), (-1, -1), 8),
                     ('GRID', (0, 0), (-1, -1), 0.5, custom_green),
                     ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, light_green]),
-                    
                     ('LEFTPADDING', (0, 0), (-1, -1), 4),
                     ('RIGHTPADDING', (0, 0), (-1, -1), 4),
                     ('TOPPADDING', (0, 0), (-1, -1), 6),
@@ -880,7 +914,8 @@ def main():
     print(f"Total combinations to check: {len(stations) * (len(stations) - 1) // 2}")
     
     issued_matrices = {seat_type: {} for seat_type in seat_types}
-    
+    fare_matrices = {seat_type: {} for seat_type in seat_types}
+
     with ThreadPoolExecutor(max_workers=10) as executor:
         futures = []
         
@@ -906,6 +941,15 @@ def main():
                     seat_type_name = seat_type["type"]
                     
                     if seat_type_name in issued_matrices:
+                        fare = float(seat_type["fare"])
+                        vat_amount = float(seat_type["vat_amount"])
+                        if seat_type_name in ["AC_B", "F_BERTH"]:
+                            fare += 50
+                        
+                        if from_city not in fare_matrices[seat_type_name]:
+                            fare_matrices[seat_type_name][from_city] = {}
+                        fare_matrices[seat_type_name][from_city][to_city] = fare + vat_amount
+                        
                         issued_info, has_error, error_msg = get_seat_layout_for_route(
                             seat_type["trip_id"], seat_type["trip_route_id"]
                         )
@@ -964,7 +1008,7 @@ def main():
     print(f"Route: {stations[0]} → {stations[-1]}")
     print(f"{'='*80}{Style.RESET_ALL}")
     
-    route_summary, seat_types_with_data = create_route_summary_data(issued_matrices, stations)
+    route_summary, seat_types_with_data = create_route_summary_data(issued_matrices, fare_matrices, stations)
     
     if seat_types_with_data:
         terminal_headers = ["From Station", "To Station"] + seat_types_with_data
@@ -974,7 +1018,7 @@ def main():
             for to_station in stations:
                 if from_station != to_station and from_station in route_summary:
                     has_tickets = any(
-                        route_summary[from_station][to_station][seat_type] > 0 
+                        route_summary[from_station][to_station][seat_type]["count"] > 0 
                         for seat_type in seat_types_with_data
                     )
                     
@@ -982,8 +1026,12 @@ def main():
                         row = [from_station, to_station]
                         
                         for seat_type in seat_types_with_data:
-                            count = route_summary[from_station][to_station][seat_type]
-                            count_text = str(count) if count > 0 else "—"
+                            count = route_summary[from_station][to_station][seat_type]["count"]
+                            fare = route_summary[from_station][to_station][seat_type]["fare"]
+                            if count > 0:
+                                count_text = f"{count}\n\u09F3 {fare:.0f}"
+                            else:
+                                count_text = "—"
                             row.append(count_text)
                         
                         terminal_table_data.append(row)
@@ -1036,7 +1084,7 @@ def main():
     print(f"{Fore.CYAN}Total train stations: {len(stations)}")
     print(f"Total route combinations analyzed: {len(stations) * (len(stations) - 1) // 2}")
     
-    generate_pdf_report(issued_matrices, stations, train_data, CONFIG)
+    generate_pdf_report(issued_matrices, fare_matrices, stations, train_data, CONFIG)
 
 if __name__ == "__main__":
     main()

@@ -1,8 +1,9 @@
 from flask import Flask, render_template, request, redirect, url_for, session, jsonify, abort, send_file
 from datetime import datetime, timedelta
-import json, pytz, os, re, uuid, base64, requests, logging, sys, threading, time, glob
+import json, pytz, os, re, uuid, base64, requests, logging, sys, threading, time, glob, secrets, time
 from reportGenerator import generate_report
 from request_queue import RequestQueue
+from functools import wraps
 
 app = Flask(__name__)
 app.secret_key = "super_secret_key"
@@ -17,6 +18,30 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 RESULT_CACHE = {}
+
+class SecurityConfig:
+    @staticmethod
+    def generate_session_token():
+        return secrets.token_urlsafe(32)
+
+def require_valid_session(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not session.get('can_generate_report', False):
+            return jsonify({
+                "success": False,
+                "error": "Unauthorized access. Please generate a report through the proper form first."
+            }), 403
+        
+        form_values = session.get('form_values')
+        if not form_values or not form_values.get('train_model') or not form_values.get('date'):
+            return jsonify({
+                "success": False,
+                "error": "Invalid session. Please start from the home page."
+            }), 403
+        
+        return f(*args, **kwargs)
+    return decorated_function
 
 def get_user_device_info():
     user_agent = request.headers.get('User-Agent', '')
@@ -251,84 +276,34 @@ def home():
         script_js=SCRIPT_JS_CONTENT
     )
 
-@app.route('/report', methods=['GET', 'POST'])
-def report():
+@app.route('/report_result')
+def report_result():
     maintenance_response = check_maintenance()
     if maintenance_response:
         return maintenance_response
+
+    result_id = session.pop('result_id', None)
+    result = RESULT_CACHE.pop(result_id, None) if result_id else None
+    form_values = session.get('form_values', None)
+
+    if not result:
+        return redirect(url_for('home'))
+
+    if session.get('report_result_viewed', False):
+        session.clear()
+        session['error'] = "Session expired or page was refreshed. Please start a new search."
+        return redirect(url_for('home'))
     
-    if request.method == 'GET':
-        form_values = session.get('form_values', {})
-        if not form_values:
-            session['error'] = "No train data found. Please start a new search."
-            return redirect(url_for('home'))
-        
-        return render_template(
-            'report.html',
-            form_values=form_values,
-            styles_css=STYLES_CSS_CONTENT,
-            script_js=SCRIPT_JS_CONTENT
-        )
+    session['report_result_viewed'] = True
+    session['can_generate_report'] = True
 
-    train_model_full = request.form.get('train_model', '').strip()
-    journey_date_str = request.form.get('date', '').strip()
-    
-    device_type, browser = get_user_device_info()
-    logger.info(f"Train Report Request - Train: '{train_model_full}', Date: '{journey_date_str}' | Device: {device_type}, Browser: {browser}")
-
-    if not train_model_full or not journey_date_str:
-        session['error'] = "Both Train Name and Journey Date are required."
-        return redirect(url_for('home'))
-
-    try:
-        date_obj = datetime.strptime(journey_date_str, '%d-%b-%Y')
-        api_date_format = date_obj.strftime('%Y-%m-%d')
-    except ValueError:
-        session['error'] = "Invalid date format. Use DD-MMM-YYYY (e.g. 15-Nov-2024)."
-        return redirect(url_for('home'))
-
-    model_match = re.match(r'.*\((\d+)\)$', train_model_full)
-    if model_match:
-        train_model = model_match.group(1)
-    else:
-        train_model = train_model_full.split('(')[0].strip()
-
-    try:
-        form_values = {
-            'train_model': train_model_full,
-            'date': journey_date_str
-        }
-        session['form_values'] = form_values
-        session['form_submitted'] = True
-
-        if CONFIG.get("queue_enabled", True):
-            request_id = request_queue.add_request(
-                process_report_request,
-                {
-                    'train_model': train_model,
-                    'journey_date_str': journey_date_str,
-                    'api_date_format': api_date_format,
-                    'form_values': form_values
-                }
-            )
-            
-            session['queue_request_id'] = request_id
-            return redirect(url_for('queue_wait'))
-        else:
-            result = process_report_request(train_model, journey_date_str, api_date_format, form_values)
-            
-            if "error" in result:
-                session['error'] = result["error"]
-                return redirect(url_for('home'))
-            
-            result_id = str(uuid.uuid4())
-            RESULT_CACHE[result_id] = result["result"]
-            session['result_id'] = result_id
-            session['pdf_filename'] = result.get("pdf_filename")
-            return redirect(url_for('report_result'))
-    except Exception as e:
-        session['error'] = f"{str(e)}"
-        return redirect(url_for('home'))
+    return render_template(
+        'report.html',
+        report_data=result,
+        form_values=form_values,
+        styles_css=STYLES_CSS_CONTENT,
+        script_js=SCRIPT_JS_CONTENT
+    )
 
 def process_report_request(train_model, journey_date_str, api_date_format, form_values):
     try:
@@ -438,6 +413,12 @@ def show_results_with_id(request_id):
     if maintenance_response:
         return maintenance_response
 
+    viewed_requests = session.get('viewed_requests', [])
+    if request_id in viewed_requests:
+        session.clear()
+        session['error'] = "Session expired or page was refreshed. Please start a new search."
+        return redirect(url_for('home'))
+
     queue_result = request_queue.get_request_result(request_id)
     
     if not queue_result:
@@ -458,6 +439,10 @@ def show_results_with_id(request_id):
     if session.get('queue_request_id') == request_id:
         session.pop('queue_request_id', None)
     
+    if 'viewed_requests' not in session:
+        session['viewed_requests'] = []
+    session['viewed_requests'].append(request_id)
+    
     session['form_values'] = form_values
     session['pdf_filename'] = pdf_filename
     session['can_generate_report'] = True
@@ -470,28 +455,103 @@ def show_results_with_id(request_id):
         script_js=SCRIPT_JS_CONTENT
     )
 
-@app.route('/report_result')
-def report_result():
+@app.route('/report', methods=['GET', 'POST'])
+def report():
     maintenance_response = check_maintenance()
     if maintenance_response:
         return maintenance_response
+    
+    if request.method == 'GET':
+        can_access_report = session.pop('can_access_report_page', False)
+        form_values = session.get('form_values', {})
+        can_generate = session.get('can_generate_report', False)
+        
+        if not can_access_report:
+            session.clear()
+            session['error'] = "Session expired or page was refreshed. Please start a new search."
+            return redirect(url_for('home'))
+        
+        if (not form_values or 
+            not form_values.get('train_model') or 
+            not form_values.get('date') or 
+            not can_generate):
+            session.clear()
+            session['error'] = "Invalid session data. Please start a new search."
+            return redirect(url_for('home'))
+        
+        session.pop('can_access_report_page', None)
+        
+        return render_template(
+            'report.html',
+            form_values=form_values,
+            styles_css=STYLES_CSS_CONTENT,
+            script_js=SCRIPT_JS_CONTENT
+        )
 
-    result_id = session.pop('result_id', None)
-    result = RESULT_CACHE.pop(result_id, None) if result_id else None
-    form_values = session.get('form_values', None)
+    train_model_full = request.form.get('train_model', '').strip()
+    journey_date_str = request.form.get('date', '').strip()
+    
+    device_type, browser = get_user_device_info()
+    logger.info(f"Train Report Request - Train: '{train_model_full}', Date: '{journey_date_str}' | Device: {device_type}, Browser: {browser}")
 
-    if not result:
+    if not train_model_full or not journey_date_str:
+        session['error'] = "Both Train Name and Journey Date are required."
         return redirect(url_for('home'))
 
-    return render_template(
-        'report.html',
-        report_data=result,
-        form_values=form_values,
-        styles_css=STYLES_CSS_CONTENT,
-        script_js=SCRIPT_JS_CONTENT
-    )
+    try:
+        date_obj = datetime.strptime(journey_date_str, '%d-%b-%Y')
+        api_date_format = date_obj.strftime('%Y-%m-%d')
+    except ValueError:
+        session['error'] = "Invalid date format. Use DD-MMM-YYYY (e.g. 15-Nov-2024)."
+        return redirect(url_for('home'))
 
+    model_match = re.match(r'.*\((\d+)\)$', train_model_full)
+    if model_match:
+        train_model = model_match.group(1)
+    else:
+        train_model = train_model_full.split('(')[0].strip()
+
+    try:
+        form_values = {
+            'train_model': train_model_full,
+            'date': journey_date_str
+        }
+        session['form_values'] = form_values
+        session['form_submitted'] = True
+        session['can_generate_report'] = True
+        session['can_access_report_page'] = True
+
+        if CONFIG.get("queue_enabled", True):
+            request_id = request_queue.add_request(
+                process_report_request,
+                {
+                    'train_model': train_model,
+                    'journey_date_str': journey_date_str,
+                    'api_date_format': api_date_format,
+                    'form_values': form_values
+                }
+            )
+            
+            session['queue_request_id'] = request_id
+            return redirect(url_for('queue_wait'))
+        else:
+            result = process_report_request(train_model, journey_date_str, api_date_format, form_values)
+            
+            if "error" in result:
+                session['error'] = result["error"]
+                return redirect(url_for('home'))
+            
+            result_id = str(uuid.uuid4())
+            RESULT_CACHE[result_id] = result["result"]
+            session['result_id'] = result_id
+            session['pdf_filename'] = result.get("pdf_filename")
+            return redirect(url_for('report_result'))
+    except Exception as e:
+        session['error'] = f"{str(e)}"
+        return redirect(url_for('home'))
+    
 @app.route('/generate_report_api', methods=['POST'])
+@require_valid_session
 def generate_report_api():
     maintenance_response = check_maintenance()
     if maintenance_response:
@@ -507,12 +567,26 @@ def generate_report_api():
                 "message": "Report ready for download"
             })
         
+        if not request.is_json:
+            return jsonify({"success": False, "error": "Invalid request format"}), 400
+        
         data = request.get_json()
+        if not data:
+            return jsonify({"success": False, "error": "No data provided"}), 400
+        
         train_model = data.get('train_model')
         date = data.get('date')
         
-        if not train_model or not date:
-            return jsonify({"success": False, "error": "Missing train model or date"})
+        if not train_model or not date or train_model.strip() == '' or date.strip() == '':
+            return jsonify({"success": False, "error": "Missing or empty train model or date"}), 400
+        
+        session_form_values = session.get('form_values', {})
+        if (train_model != session_form_values.get('train_model') or 
+            date != session_form_values.get('date')):
+            return jsonify({
+                "success": False, 
+                "error": "Request data doesn't match your session. Please start over."
+            }), 403
         
         model_match = re.match(r'.*\((\d+)\)$', train_model)
         if model_match:
@@ -524,7 +598,7 @@ def generate_report_api():
             date_obj = datetime.strptime(date, '%d-%b-%Y')
             api_date_format = date_obj.strftime('%Y-%m-%d')
         except ValueError:
-            return jsonify({"success": False, "error": "Invalid date format"})
+            return jsonify({"success": False, "error": "Invalid date format"}), 400
         
         device_type, browser = get_user_device_info()
         
@@ -547,7 +621,7 @@ def generate_report_api():
         return jsonify({
             "success": False,
             "error": f"An error occurred while generating the report: {str(e)}"
-        })
+        }), 500
 
 @app.route('/download_report/<filename>')
 def download_report(filename):
@@ -556,13 +630,28 @@ def download_report(filename):
         return maintenance_response
     
     try:
-        if not filename.endswith('.pdf') or '..' in filename or '/' in filename:
+        if (not filename.endswith('.pdf') or 
+            '..' in filename or 
+            '/' in filename or 
+            '\\' in filename or
+            len(filename) > 100):
             abort(404)
+        
+        session_filename = session.get('pdf_filename')
+        if not session_filename or session_filename != filename:
+            if not session.get('form_values'):
+                abort(404)
+            else:
+                session['error'] = "Unauthorized file access. Please generate a new report."
+                return redirect(url_for('report'))
         
         file_path = filename
         if not os.path.exists(file_path):
-            session['error'] = "Report file not found. Please generate a new report."
-            return redirect(url_for('report'))
+            if not session.get('form_values'):
+                abort(404)
+            else:
+                session['error'] = "Report file not found or has expired. Please generate a new report."
+                return redirect(url_for('home'))
         
         device_type, browser = get_user_device_info()
         
@@ -573,19 +662,27 @@ def download_report(filename):
             mimetype='application/pdf'
         )
         
+        response.headers['X-Content-Type-Options'] = 'nosniff'
+        response.headers['X-Frame-Options'] = 'DENY'
+        response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+        
         @response.call_on_close
         def remove_file():
             try:
                 if os.path.exists(file_path):
                     os.remove(file_path)
+                session.pop('pdf_filename', None)
             except Exception:
                 pass
         
         return response
         
     except Exception as e:
-        session['error'] = "An error occurred while downloading the report."
-        return redirect(url_for('report'))
+        if not session.get('form_values'):
+            abort(404)
+        else:
+            session['error'] = "An error occurred while downloading the report."
+            return redirect(url_for('home'))
 
 @app.route('/queue_stats')
 def queue_stats():

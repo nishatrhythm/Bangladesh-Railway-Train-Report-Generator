@@ -61,54 +61,170 @@
     </script>
     <script>
         let isGenerating = false;
+        let downloadAttempted = false;
+        let statusTimeoutId = null;
 
         function generateReport() {
-            if (isGenerating) return;
+            if (isGenerating) {
+                console.log('Already generating, ignoring duplicate click');
+                return;
+            }
 
             isGenerating = true;
+            downloadAttempted = false;
+            
+            if (statusTimeoutId) {
+                clearTimeout(statusTimeoutId);
+                statusTimeoutId = null;
+            }
+            
             const btn = document.getElementById('downloadBtn');
             const btnIcon = document.getElementById('btnIcon');
             const btnText = document.getElementById('btnText');
-            const statusMessage = document.getElementById('statusMessage');
 
             btn.classList.add('processing');
+            btn.disabled = true;
             btnIcon.className = 'loading-spinner';
             btnText.innerHTML = 'Generating Report...';
 
-            showMessage('Checking for existing report or generating new one. This may take a few minutes...', 'info');
+            showMessage('Checking for existing report or generating new one. This may take a few minutes...', 'info', false);
 
             fetch('/generate_report_api', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
                 },
+                credentials: 'same-origin',
                 body: JSON.stringify({
                     train_model: '{{ form_values.train_model }}',
                     date: '{{ form_values.date }}'
                 })
             })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        showMessage('Report generated successfully! Download will start automatically.', 'success');
-
-                        const link = document.createElement('a');
-                        link.href = '/download_report/' + data.filename;
-                        link.download = data.filename;
-                        link.click();
+            .then(response => {
+                if (!response.ok) {
+                    if (response.status === 403) {
+                        throw new Error('Session expired or unauthorized. Please start over.');
+                    } else if (response.status >= 500) {
+                        throw new Error('Server error. Please try again later.');
                     } else {
-                        showMessage('Error generating report: ' + data.error, 'error');
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                     }
-                    resetButton();
-                })
-                .catch(error => {
-                    showMessage('Network error: ' + error.message, 'error');
-                    resetButton();
-                });
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.success) {
+                    showMessage('Report generated successfully! Download will start automatically.', 'success', true);
+                    initiateDownload(data.filename);
+                } else {
+                    const errorMsg = data.error || 'Unknown error occurred';
+                    if (errorMsg.includes('Unauthorized') || errorMsg.includes('session')) {
+                        showMessage('Session expired. ' + errorMsg, 'error', false);
+                        setTimeout(() => {
+                            window.location.href = '/';
+                        }, 3000);
+                    } else {
+                        showMessage('Error generating report: ' + errorMsg, 'error', true);
+                    }
+                }
+                resetButton();
+            })
+            .catch(error => {
+                console.error('Download error:', error);
+                showMessage('Error: ' + error.message, 'error', true);
+                resetButton();
+            });
         }
 
-        function showMessage(text, type) {
+        function initiateDownload(filename) {
+            if (downloadAttempted) return;
+            downloadAttempted = true;
+
+            const downloadUrl = '/download_report/' + filename;
+            
+            try {
+                const link = document.createElement('a');
+                link.href = downloadUrl;
+                link.download = filename;
+                link.style.display = 'none';
+                
+                document.body.appendChild(link);
+                
+                const clickEvent = new MouseEvent('click', {
+                    bubbles: true,
+                    cancelable: true,
+                    view: window
+                });
+                
+                link.dispatchEvent(clickEvent);
+                
+                setTimeout(() => {
+                    if (document.body.contains(link)) {
+                        document.body.removeChild(link);
+                    }
+                }, 1000);
+                
+                setTimeout(() => {
+                    showManualDownloadOption(downloadUrl, filename);
+                }, 4000);
+                
+            } catch (error) {
+                console.error('Primary download method failed:', error);
+                fallbackDownload(downloadUrl, filename);
+            }
+        }
+
+        function fallbackDownload(downloadUrl, filename) {
+            try {
+                const downloadWindow = window.open(downloadUrl, '_blank');
+                
+                setTimeout(() => {
+                    if (!downloadWindow || downloadWindow.closed) {
+                        showManualDownloadOption(downloadUrl, filename);
+                    }
+                }, 1000);
+                
+            } catch (error) {
+                console.error('Fallback download failed:', error);
+                showManualDownloadOption(downloadUrl, filename);
+            }
+        }
+
+        function showManualDownloadOption(downloadUrl, filename) {
             const statusMessage = document.getElementById('statusMessage');
+            
+            if (!statusMessage.innerHTML.includes('Click Here to Download')) {
+                if (statusTimeoutId) {
+                    clearTimeout(statusTimeoutId);
+                    statusTimeoutId = null;
+                }
+                
+                statusMessage.className = 'status-message status-info';
+                statusMessage.innerHTML = `
+                    <div style="text-align: center;">
+                        <i class="fas fa-info-circle"></i>
+                        <p>If download didn't start automatically:</p>
+                        <a href="${downloadUrl}" 
+                        target="_blank" 
+                        download="${filename}" 
+                        style="color: #004085; text-decoration: underline; font-weight: bold; padding: 8px 16px; border: 1px solid #004085; border-radius: 4px; display: inline-block; margin-top: 5px;">
+                            <i class="fas fa-download"></i> Click Here to Download
+                        </a>
+                    </div>
+                `;
+                statusMessage.style.display = 'block';
+            }
+        }
+
+        function showMessage(text, type, autoHide = true) {
+            const statusMessage = document.getElementById('statusMessage');
+            
+            if (statusTimeoutId) {
+                clearTimeout(statusTimeoutId);
+                statusTimeoutId = null;
+            }
+            
             statusMessage.className = 'status-message status-' + type;
 
             let icon = '';
@@ -120,8 +236,18 @@
                 icon = '<i class="fas fa-info-circle"></i>';
             }
 
-            statusMessage.innerHTML = icon + text;
-            statusMessage.style.display = 'flex';
+            statusMessage.innerHTML = icon + ' ' + text;
+            statusMessage.style.display = 'block';
+            
+            if (autoHide && type === 'success') {
+                statusTimeoutId = setTimeout(() => {
+                    if (statusMessage.style.display !== 'none' && 
+                        !statusMessage.innerHTML.includes('Click Here to Download')) {
+                        statusMessage.style.display = 'none';
+                    }
+                    statusTimeoutId = null;
+                }, 5000);
+            }
         }
 
         function resetButton() {
@@ -131,19 +257,17 @@
             const btnText = document.getElementById('btnText');
 
             btn.classList.remove('processing');
+            btn.disabled = false;
             btnIcon.className = 'fas fa-download';
             btnText.innerHTML = 'Download PDF Report';
         }
 
-        document.addEventListener('DOMContentLoaded', function () {
-            setTimeout(() => {
-                const successMessages = document.querySelectorAll('.status-success');
-                successMessages.forEach(msg => {
-                    if (msg.style.display !== 'none') {
-                        msg.style.display = 'none';
-                    }
-                });
-            }, 5000);
+        document.getElementById('downloadBtn').addEventListener('click', function(e) {
+            if (isGenerating) {
+                e.preventDefault();
+                e.stopPropagation();
+                return false;
+            }
         });
     </script>
     <script src="/static/js/script.js"></script>
