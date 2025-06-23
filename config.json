@@ -1,8 +1,8 @@
 {
-    "version": "1.0.0",
+    "version": "1.0.1",
     "is_maintenance": 0,
     "maintenance_message": "This website is currently undergoing scheduled maintenance.",
-    "is_banner_enabled": 1,
+    "is_banner_enabled": 0,
     "image_link": "",
     "force_banner": 0,
     "queue_enabled": true
