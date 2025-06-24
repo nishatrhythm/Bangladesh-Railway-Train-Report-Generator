@@ -367,7 +367,7 @@ def generate_pdf_report(issued_matrices: Dict, fare_matrices: Dict, stations: Li
         bengali_font = 'Helvetica'
         use_taka_symbol = False
     
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now(pytz.timezone('Asia/Dhaka')).strftime("%Y%m%d_%H%M%S")
     filename = f"BDRAILWAY_ISSUED_TICKETS_REPORT_{config['train_model']}_{timestamp}.pdf"
     
     try:
