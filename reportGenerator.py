@@ -174,6 +174,11 @@ def normalize_city_name_for_comparison(city_name: str) -> str:
     return city_name.lower().replace("'", "")
 
 def get_route_availability(from_city: str, to_city: str, date_str: str, target_model: str) -> Dict:
+    global TOKEN
+    if not TOKEN:
+        TOKEN = fetch_token()
+        set_token(TOKEN)
+
     url = f"{API_BASE_URL}/app/bookings/search-trips-v2"
     params = {
         "from_city": from_city,
@@ -181,13 +186,14 @@ def get_route_availability(from_city: str, to_city: str, date_str: str, target_m
         "date_of_journey": date_str,
         "seat_class": "SHULOV"
     }
+    headers = {"Authorization": f"Bearer {TOKEN}"}
     
     max_retries = 2
     retry_count = 0
     
     while retry_count < max_retries:
         try:
-            response = requests.get(url, params=params)
+            response = requests.get(url, headers=headers, params=params)
             if response.status_code == 403:
                 return None
             

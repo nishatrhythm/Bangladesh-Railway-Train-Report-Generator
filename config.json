@@ -1,6 +1,6 @@
 {
-    "version": "1.0.3",
-    "is_maintenance": 1,
+    "version": "1.0.4",
+    "is_maintenance": 0,
     "maintenance_message": "We're currently applying important server-side updates. The service will be temporarily unavailable from 9:00 PM to 11:00 PM (BST). Please check back after this time. We apologise for the inconvenience and appreciate your patience.",
     "is_banner_enabled": 1,
     "image_link": "",

@@ -185,13 +185,19 @@ def get_seat_layout_for_route(trip_id: str, trip_route_id: str) -> Tuple[Dict, b
             retry_count += 1
 
 def fetch_train_data(model: str, departure_date: str) -> Dict:
-    url = "https://railspaapi.shohoz.com/v1.0/web/train-routes"
+    global TOKEN
+    
+    if not TOKEN:
+        TOKEN = fetch_token()
+        set_token(TOKEN)
+        
+    url = f"{API_BASE_URL}/app/train-routes"
     payload = {
         "model": model,
         "departure_date_time": departure_date
     }
-    headers = {'Content-Type': 'application/json'}
-    
+    headers = {'Content-Type': 'application/json', 'Authorization': f'Bearer {TOKEN}'}
+
     max_retries = 2
     retry_count = 0
     

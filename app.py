@@ -1,7 +1,7 @@
 from flask import Flask, render_template, request, redirect, url_for, session, jsonify, abort, send_file
 from datetime import datetime, timedelta
 import json, pytz, os, re, uuid, base64, requests, logging, sys, threading, time, glob, secrets, time
-from reportGenerator import generate_report
+from reportGenerator import TOKEN, fetch_token, set_token, generate_report
 from request_queue import RequestQueue
 from functools import wraps
 
@@ -743,6 +743,11 @@ def search_trains():
         return jsonify({"error": str(e)}), 500
 
 def fetch_trains_for_date(origin, destination, date_str):
+    global TOKEN
+    if not TOKEN:
+        TOKEN = fetch_token()
+        set_token(TOKEN)
+
     url = "https://railspaapi.shohoz.com/v1.0/web/bookings/search-trips-v2"
     params = {
         'from_city': origin,
@@ -750,13 +755,14 @@ def fetch_trains_for_date(origin, destination, date_str):
         'date_of_journey': date_str,
         'seat_class': 'S_CHAIR'
     }
+    headers = {"Authorization": f"Bearer {TOKEN}"}
     
     max_retries = 2
     retry_count = 0
     
     while retry_count < max_retries:
         try:
-            response = requests.get(url, params=params, timeout=10)
+            response = requests.get(url, headers=headers, params=params, timeout=10)
             if response.status_code == 403:
                 raise Exception("Rate limit exceeded. Please try again later.")
                 
