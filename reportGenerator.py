@@ -427,7 +427,7 @@ def generate_pdf_report(issued_matrices: Dict, fare_matrices: Dict, stations: Li
     try:
         doc = SimpleDocTemplate(filename, pagesize=A4, 
                               rightMargin=40, leftMargin=40, 
-                              topMargin=60, bottomMargin=80)
+                              topMargin=40, bottomMargin=40)
         
         # Professional color scheme using website primary color
         primary_green = colors.Color(0x00/255.0, 0x67/255.0, 0x47/255.0)  # Website primary color #006747
@@ -465,8 +465,8 @@ def generate_pdf_report(issued_matrices: Dict, fare_matrices: Dict, stations: Li
             'CustomHeading',
             parent=styles['Heading2'],
             fontSize=16,
-            spaceAfter=18,
-            spaceBefore=25,
+            spaceAfter=10,
+            spaceBefore=10,
             textColor=primary_green,
             fontName=bold_font,
             borderWidth=0,
@@ -518,7 +518,7 @@ def generate_pdf_report(issued_matrices: Dict, fare_matrices: Dict, stations: Li
             fontName=regular_font,
             alignment=1,
             backColor=colors.Color(1.0, 0.98, 0.98),
-            borderPadding=12,
+            borderPadding=8,
             leading=12,
             leftIndent=0,
             rightIndent=0
@@ -534,23 +534,23 @@ def generate_pdf_report(issued_matrices: Dict, fare_matrices: Dict, stations: Li
             ('BACKGROUND', (0, 0), (-1, -1), colors.Color(1.0, 0.98, 0.98)),
             ('BORDER', (0, 0), (-1, -1), 1, colors.Color(0.9, 0.7, 0.7)),
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('LEFTPADDING', (0, 0), (-1, -1), 12),
-            ('RIGHTPADDING', (0, 0), (-1, -1), 12),
-            ('TOPPADDING', (0, 0), (-1, -1), 12),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 12)
+            ('LEFTPADDING', (0, 0), (-1, -1), 8),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 8),
+            ('TOPPADDING', (0, 0), (-1, -1), 8),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8)
         ]))
         story.append(disclaimer_table)
         story.append(Spacer(1, 20))
         
         # Enhanced report information section
         github_url = "https://github.com/nishatrhythm/Bangladesh-Railway-Train-Report-Generator"
-        github_link = f'<a href="{github_url}" color="blue">Source Code</a>'
+        github_link = f'<a href="{github_url}" color="blue">GitHub Repository</a>'
 
         website1_url = "https://seat.onrender.com"
-        website1_link = f'<a href="{website1_url}" color="blue">Seat Matrix Tool</a>'
+        website1_link = f'<a href="{website1_url}" color="blue">Train Seat Matrix</a>'
 
         website2_url = "https://trainseat.onrender.com"
-        website2_link = f'<a href="{website2_url}" color="blue">Seat Availability Tool</a>'
+        website2_link = f'<a href="{website2_url}" color="blue">Train Seat Availability</a>'
 
         config_data = [
             ["Train Model", config['train_model']],
@@ -560,8 +560,8 @@ def generate_pdf_report(issued_matrices: Dict, fare_matrices: Dict, stations: Li
             ["Total Stations", str(len(stations))],
             ["Report Generated", datetime.now(pytz.timezone('Asia/Dhaka')).strftime("%d %B %Y  |  %H:%M:%S")],
             ["Source Code", github_link],
-            ["Utility Portal 1", website1_link],
-            ["Utility Portal 2", website2_link]
+            ["Utility Website 1", website1_link],
+            ["Utility Website 2", website2_link]
         ]
         
         config_table_data = []
@@ -591,11 +591,11 @@ def generate_pdf_report(issued_matrices: Dict, fare_matrices: Dict, stations: Li
         ]))
         
         story.append(config_table)
-        story.append(Spacer(1, 35))
+        story.append(Spacer(1, 30))
         
         # Enhanced stations section
         story.append(Paragraph("TRAIN ROUTE STATIONS", heading_style))
-        story.append(Spacer(1, 15))
+        story.append(Spacer(1, 10))
         
         stations_data = []
         cols = 3
@@ -798,9 +798,9 @@ def generate_pdf_report(issued_matrices: Dict, fare_matrices: Dict, stations: Li
                                 fare = route_summary[from_station][to_station][seat_type]["fare"]
                                 if count > 0:
                                     if use_taka_symbol:
-                                        count_text = f'<font size="10" color="black" face="{bold_font}">{count}</font><br/><font size="8" color="gray" face="{bengali_font}">৳</font><font size="8" color="gray" face="{regular_font}"> {fare:.0f}</font>'
+                                        count_text = f'<font size="10" color="#006747" face="{bold_font}">{count}</font><br/><font size="8" color="gray" face="{bengali_font}">৳</font><font size="8" color="gray" face="{regular_font}"> {fare:.0f}</font>'
                                     else:
-                                        count_text = f'<font size="10" color="black" face="{bold_font}">{count}</font><br/><font size="8" color="gray" face="{regular_font}">BDT {fare:.0f}</font>'
+                                        count_text = f'<font size="10" color="#006747" face="{bold_font}">{count}</font><br/><font size="8" color="gray" face="{regular_font}">BDT {fare:.0f}</font>'
                                     
                                     count_style = ParagraphStyle('RouteCountStyle',
                                                             parent=styles['Normal'],

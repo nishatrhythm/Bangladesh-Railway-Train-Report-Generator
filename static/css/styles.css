@@ -759,7 +759,7 @@ input[readonly].error-input {
     box-shadow: inset 0 0 0 1px rgba(0, 103, 71, 0.15);
 }
 
-.calendar-day:hover:not(.disabled):not(.selected):not(.today) {
+.calendar-day:hover:not(.disabled):not(.selected) {
     background-color: #e6f0ea;
     transform: scale(1.05);
 }
@@ -772,10 +772,13 @@ input[readonly].error-input {
 }
 
 .calendar-day.today:not(.selected) {
-    border: 2px solid #006747;
-    background-color: #ffffff;
-    font-weight: bold;
+    background-color: #f1f8f3;
+    border: none;
+    border-radius: 8px;
     color: #006747;
+    cursor: pointer;
+    transition: background-color 0.2s, transform 0.2s;
+    box-shadow: inset 0 0 0 1px rgba(0, 103, 71, 0.15);
 }
 
 .calendar-day.disabled {
