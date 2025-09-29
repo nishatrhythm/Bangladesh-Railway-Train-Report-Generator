@@ -226,6 +226,14 @@ def set_cache_headers(response):
     response.headers['Expires'] = '0'
     return response
 
+@app.route('/ads.txt')
+def ads_txt():
+    try:
+        ads_txt_path = os.path.join(os.path.dirname(__file__), 'ads.txt')
+        return send_file(ads_txt_path, mimetype='text/plain')
+    except FileNotFoundError:
+        abort(404)
+
 @app.route('/')
 def home():
     maintenance_response = check_maintenance()
