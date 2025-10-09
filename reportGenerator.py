@@ -2,7 +2,6 @@ import requests, os, textwrap, json, pytz
 from typing import Dict, List, Tuple
 from datetime import datetime, timedelta, timezone
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dotenv import load_dotenv
 
 try:
     from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
@@ -16,8 +15,6 @@ try:
     REPORTLAB_AVAILABLE = True
 except ImportError:
     REPORTLAB_AVAILABLE = False
-
-load_dotenv('/etc/secrets/.env')
 
 API_BASE_URL = 'https://railspaapi.shohoz.com/v1.0'
 SEAT_AVAILABILITY = {'AVAILABLE': 1, 'IN_PROCESS': 2}
@@ -36,44 +33,6 @@ def set_token(token: str):
     global TOKEN, TOKEN_TIMESTAMP
     TOKEN = token
     TOKEN_TIMESTAMP = datetime.now(timezone.utc)
-
-def fetch_token() -> str:
-    mobile_number = os.getenv("FIXED_MOBILE_NUMBER")
-    password = os.getenv("FIXED_PASSWORD")
-    
-    if not mobile_number or not password:
-        raise Exception("Mobile number or password not configured in environment.")
-    
-    url = f"{API_BASE_URL}/app/auth/sign-in"
-    payload = {"mobile_number": mobile_number, "password": password}
-    
-    max_retries = 2
-    retry_count = 0
-    
-    while retry_count < max_retries:
-        try:
-            response = requests.post(url, json=payload)
-            if response.status_code == 403:
-                raise Exception("Rate limit exceeded. Please try again later.")
-            
-            if response.status_code == 422:
-                raise Exception("Invalid credentials. Please check mobile number and password.")
-            
-            if response.status_code >= 500:
-                retry_count += 1
-                if retry_count == max_retries:
-                    raise Exception("We're unable to connect to the Bangladesh Railway website right now. Please try again in a few minutes.")
-                continue
-            
-            response.raise_for_status()
-            data = response.json()
-            return data["data"]["token"]
-        except requests.RequestException as e:
-            if hasattr(e, 'response') and e.response and e.response.status_code == 403:
-                raise Exception("Rate limit exceeded. Please try again later.")
-            if retry_count == max_retries - 1:
-                raise Exception(f"Failed to fetch token: {str(e)}")
-            retry_count += 1
 
 def sort_seat_number(seat: str) -> tuple:
     parts = seat.split('-')
@@ -94,7 +53,7 @@ def sort_seat_number(seat: str) -> tuple:
     
     return (len(BANGLA_COACH_ORDER) + 1, seat, 0, '')
 
-def analyze_issued_tickets(data: Dict) -> Dict:
+def analyze_issued_tickets(data: Dict, auth_token: str, device_key: str) -> Dict:
     layout = data.get("data", {}).get("seatLayout", [])
     if not layout:
         return {}
@@ -114,41 +73,34 @@ def analyze_issued_tickets(data: Dict) -> Dict:
         "count": len(issued_seats_sorted)
     }
 
-def get_seat_layout_for_route(trip_id: str, trip_route_id: str) -> Tuple[Dict, bool, str]:
-    global TOKEN
-    
-    if not TOKEN:
-        TOKEN = fetch_token()
-        set_token(TOKEN)
-    
+def get_seat_layout_for_route(trip_id: str, trip_route_id: str, auth_token: str, device_key: str) -> Tuple[Dict, bool, str]:
     url = f"{API_BASE_URL}/app/bookings/seat-layout"
-    headers = {"Authorization": f"Bearer {TOKEN}"}
+    headers = {
+        "Authorization": f"Bearer {auth_token}",
+        "x-device-key": device_key
+    }
     params = {"trip_id": trip_id, "trip_route_id": trip_route_id}
     
     max_retries = 2
     retry_count = 0
-    has_retried_with_new_token = False
     
     while retry_count < max_retries:
         try:
             response = requests.get(url, headers=headers, params=params)
             
-            if response.status_code == 401 and not has_retried_with_new_token:
+            if response.status_code == 401:
                 try:
                     error_data = response.json()
                     error_messages = error_data.get("error", {}).get("messages", [])
-                    if isinstance(error_messages, list) and any("Invalid User Access Token!" in msg for msg in error_messages):
-                        TOKEN = fetch_token()
-                        set_token(TOKEN)
-                        headers["Authorization"] = f"Bearer {TOKEN}"
-                        has_retried_with_new_token = True
-                        continue
+                    if isinstance(error_messages, list):
+                        for msg in error_messages:
+                            if "You are not authorized for this request" in msg or "Please login first" in msg:
+                                return {}, True, "AUTH_DEVICE_KEY_EXPIRED"
+                            elif "Invalid User Access Token!" in msg:
+                                return {}, True, "AUTH_TOKEN_EXPIRED"
+                    return {}, True, "AUTH_TOKEN_EXPIRED"
                 except ValueError:
-                    TOKEN = fetch_token()
-                    set_token(TOKEN)
-                    headers["Authorization"] = f"Bearer {TOKEN}"
-                    has_retried_with_new_token = True
-                    continue
+                    return {}, True, "AUTH_TOKEN_EXPIRED"
             
             if response.status_code == 403:
                 return {}, True, "Rate limit exceeded. Please try again later."
@@ -161,9 +113,24 @@ def get_seat_layout_for_route(trip_id: str, trip_route_id: str) -> Tuple[Dict, b
             
             response.raise_for_status()
             data = response.json()
-            return analyze_issued_tickets(data), False, ""
+            return analyze_issued_tickets(data, auth_token, device_key), False, ""
             
         except requests.RequestException as e:
+            status_code = e.response.status_code if e.response is not None else None
+            if status_code == 401:
+                try:
+                    error_data = e.response.json()
+                    error_messages = error_data.get("error", {}).get("messages", [])
+                    if isinstance(error_messages, list):
+                        for msg in error_messages:
+                            if "You are not authorized for this request" in msg or "Please login first" in msg:
+                                return {}, True, "AUTH_DEVICE_KEY_EXPIRED"
+                            elif "Invalid User Access Token!" in msg:
+                                return {}, True, "AUTH_TOKEN_EXPIRED"
+                    return {}, True, "AUTH_TOKEN_EXPIRED"
+                except ValueError:
+                    return {}, True, "AUTH_TOKEN_EXPIRED"
+            
             retry_count += 1
             if retry_count == max_retries:
                 return {}, True, f"Failed to fetch seat layout: {str(e)}"
@@ -173,12 +140,7 @@ def get_seat_layout_for_route(trip_id: str, trip_route_id: str) -> Tuple[Dict, b
 def normalize_city_name_for_comparison(city_name: str) -> str:
     return city_name.lower().replace("'", "")
 
-def get_route_availability(from_city: str, to_city: str, date_str: str, target_model: str) -> Dict:
-    global TOKEN
-    if not TOKEN:
-        TOKEN = fetch_token()
-        set_token(TOKEN)
-
+def get_route_availability(from_city: str, to_city: str, date_str: str, target_model: str, auth_token: str, device_key: str) -> Dict:
     url = f"{API_BASE_URL}/app/bookings/search-trips-v2"
     params = {
         "from_city": from_city,
@@ -186,32 +148,31 @@ def get_route_availability(from_city: str, to_city: str, date_str: str, target_m
         "date_of_journey": date_str,
         "seat_class": "SHULOV"
     }
-    headers = {"Authorization": f"Bearer {TOKEN}"}
+    headers = {
+        "Authorization": f"Bearer {auth_token}",
+        "x-device-key": device_key
+    }
     
     max_retries = 2
     retry_count = 0
-    has_retried_with_new_token = False
     
     while retry_count < max_retries:
         try:
             response = requests.get(url, headers=headers, params=params)
             
-            if response.status_code == 401 and not has_retried_with_new_token:
+            if response.status_code == 401:
                 try:
                     error_data = response.json()
                     error_messages = error_data.get("error", {}).get("messages", [])
-                    if isinstance(error_messages, list) and any("Invalid User Access Token!" in msg for msg in error_messages):
-                        TOKEN = fetch_token()
-                        set_token(TOKEN)
-                        headers["Authorization"] = f"Bearer {TOKEN}"
-                        has_retried_with_new_token = True
-                        continue
+                    if isinstance(error_messages, list):
+                        for msg in error_messages:
+                            if "You are not authorized for this request" in msg or "Please login first" in msg:
+                                raise Exception("AUTH_DEVICE_KEY_EXPIRED")
+                            elif "Invalid User Access Token!" in msg:
+                                raise Exception("AUTH_TOKEN_EXPIRED")
+                    raise Exception("AUTH_TOKEN_EXPIRED")
                 except ValueError:
-                    TOKEN = fetch_token()
-                    set_token(TOKEN)
-                    headers["Authorization"] = f"Bearer {TOKEN}"
-                    has_retried_with_new_token = True
-                    continue
+                    raise Exception("AUTH_TOKEN_EXPIRED")
             
             if response.status_code == 403:
                 return None
@@ -241,22 +202,19 @@ def get_route_availability(from_city: str, to_city: str, date_str: str, target_m
             
         except requests.RequestException as e:
             status_code = e.response.status_code if e.response is not None else None
-            if status_code == 401 and not has_retried_with_new_token:
+            if status_code == 401:
                 try:
                     error_data = e.response.json()
                     error_messages = error_data.get("error", {}).get("messages", [])
-                    if isinstance(error_messages, list) and any("Invalid User Access Token!" in msg for msg in error_messages):
-                        TOKEN = fetch_token()
-                        set_token(TOKEN)
-                        headers["Authorization"] = f"Bearer {TOKEN}"
-                        has_retried_with_new_token = True
-                        continue
+                    if isinstance(error_messages, list):
+                        for msg in error_messages:
+                            if "You are not authorized for this request" in msg or "Please login first" in msg:
+                                raise Exception("AUTH_DEVICE_KEY_EXPIRED")
+                            elif "Invalid User Access Token!" in msg:
+                                raise Exception("AUTH_TOKEN_EXPIRED")
+                    raise Exception("AUTH_TOKEN_EXPIRED")
                 except ValueError:
-                    TOKEN = fetch_token()
-                    set_token(TOKEN)
-                    headers["Authorization"] = f"Bearer {TOKEN}"
-                    has_retried_with_new_token = True
-                    continue
+                    raise Exception("AUTH_TOKEN_EXPIRED")
                     
             if hasattr(e, 'response') and e.response and e.response.status_code == 403:
                 return None
@@ -296,8 +254,8 @@ def fetch_train_data(model: str, departure_date: str) -> Dict:
                 return None
             retry_count += 1
 
-def process_single_route(trip_id: str, trip_route_id: str, from_station: str, to_station: str, seat_type: str) -> Tuple[str, str, str, Dict]:
-    result, has_error, error_message = get_seat_layout_for_route(trip_id, trip_route_id)
+def process_single_route(trip_id: str, trip_route_id: str, from_station: str, to_station: str, seat_type: str, auth_token: str, device_key: str) -> Tuple[str, str, str, Dict]:
+    result, has_error, error_message = get_seat_layout_for_route(trip_id, trip_route_id, auth_token, device_key)
     
     if has_error:
         return from_station, to_station, seat_type, {"error": error_message}
@@ -986,7 +944,7 @@ def generate_pdf_report(issued_matrices: Dict, fare_matrices: Dict, stations: Li
     except Exception:
         return None
 
-def generate_report(train_model: str, date_of_journey: str) -> Dict:
+def generate_report(train_model: str, date_of_journey: str, auth_token: str, device_key: str) -> Dict:
     try:
         try:
             date_obj = datetime.strptime(date_of_journey, "%Y-%m-%d")
@@ -1048,7 +1006,7 @@ def generate_report(train_model: str, date_of_journey: str) -> Dict:
                 for j, to_city in enumerate(stations):
                     if i < j:
                         route_date = station_dates[from_city]
-                        future = executor.submit(get_route_availability, from_city, to_city, route_date, train_model)
+                        future = executor.submit(get_route_availability, from_city, to_city, route_date, train_model, auth_token, device_key)
                         futures.append((future, from_city, to_city))
             
             for future, from_city, to_city in futures:
@@ -1069,7 +1027,7 @@ def generate_report(train_model: str, date_of_journey: str) -> Dict:
                             fare_matrices[seat_type_name][from_city][to_city] = fare + vat_amount
                             
                             issued_info, has_error, error_msg = get_seat_layout_for_route(
-                                seat_type["trip_id"], seat_type["trip_route_id"]
+                                seat_type["trip_id"], seat_type["trip_route_id"], auth_token, device_key
                             )
                             
                             if not has_error and issued_info.get("count", 0) > 0:

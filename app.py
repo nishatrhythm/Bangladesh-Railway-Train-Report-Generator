@@ -1,7 +1,7 @@
 from flask import Flask, render_template, request, redirect, url_for, session, jsonify, abort, send_file
 from datetime import datetime, timedelta
 import json, pytz, os, re, uuid, base64, requests, logging, sys, threading, time, glob, secrets, time
-from reportGenerator import TOKEN, fetch_token, set_token, generate_report
+from reportGenerator import generate_report
 from request_queue import RequestQueue
 from functools import wraps
 
@@ -178,6 +178,16 @@ if os.path.exists(default_banner_path):
     except Exception:
         pass
 
+instruction_image_path = 'static/images/instruction.png'
+DEFAULT_INSTRUCTION_IMAGE = ""
+if os.path.exists(instruction_image_path):
+    try:
+        with open(instruction_image_path, 'rb') as img_file:
+            encoded_image = base64.b64encode(img_file.read()).decode('utf-8')
+            DEFAULT_INSTRUCTION_IMAGE = f"data:image/png;base64,{encoded_image}"
+    except Exception:
+        pass
+
 def configure_request_queue():
     max_concurrent = CONFIG.get("queue_max_concurrent", 1)
     cooldown_period = CONFIG.get("queue_cooldown_period", 3)
@@ -272,6 +282,7 @@ def home():
         CONFIG=config,
         is_banner_enabled=CONFIG.get("is_banner_enabled", 0),
         banner_image=banner_image,
+        instruction_image=DEFAULT_INSTRUCTION_IMAGE,
         min_date=min_date.strftime("%Y-%m-%d"),
         max_date=max_date.strftime("%Y-%m-%d"),
         bst_midnight_utc=bst_midnight_utc,
@@ -313,9 +324,12 @@ def report_result():
         script_js=SCRIPT_JS_CONTENT
     )
 
-def process_report_request(train_model, journey_date_str, api_date_format, form_values):
+def process_report_request(train_model, journey_date_str, api_date_format, form_values, auth_token, device_key):
     try:
-        result = generate_report(train_model, api_date_format)
+        if not auth_token or not device_key:
+            return {"error": "AUTH_CREDENTIALS_REQUIRED"}
+        
+        result = generate_report(train_model, api_date_format, auth_token, device_key)
         if not result or not result.get('success'):
             error_msg = result.get('error', 'Unknown error occurred') if result else 'No data received. Please try a different train or date.'
             return {"error": error_msg}
@@ -536,14 +550,18 @@ def report():
                     'train_model': train_model,
                     'journey_date_str': journey_date_str,
                     'api_date_format': api_date_format,
-                    'form_values': form_values
+                    'form_values': form_values,
+                    'auth_token': request.form.get('auth_token', ''),
+                    'device_key': request.form.get('device_key', '')
                 }
             )
             
             session['queue_request_id'] = request_id
             return redirect(url_for('queue_wait'))
         else:
-            result = process_report_request(train_model, journey_date_str, api_date_format, form_values)
+            auth_token = request.form.get('auth_token', '')
+            device_key = request.form.get('device_key', '')
+            result = process_report_request(train_model, journey_date_str, api_date_format, form_values, auth_token, device_key)
             
             if "error" in result:
                 session['error'] = result["error"]
@@ -722,11 +740,16 @@ def search_trains():
         data = request.get_json()
         origin = data.get('origin', '').strip()
         destination = data.get('destination', '').strip()
+        auth_token = data.get('auth_token', '').strip()
+        device_key = data.get('device_key', '').strip()
         
         device_type, browser = get_user_device_info()
         
         if not origin or not destination:
             return jsonify({"error": "Both origin and destination are required"}), 400
+        
+        if not auth_token or not device_key:
+            return jsonify({"error": "Authentication credentials are required"}), 400
     
         
         today = datetime.now()
@@ -736,8 +759,8 @@ def search_trains():
         date1_str = date1.strftime('%d-%b-%Y')
         date2_str = date2.strftime('%d-%b-%Y')
         
-        trains_day1 = fetch_trains_for_date(origin, destination, date1_str)
-        trains_day2 = fetch_trains_for_date(origin, destination, date2_str)
+        trains_day1 = fetch_trains_for_date(origin, destination, date1_str, auth_token, device_key)
+        trains_day2 = fetch_trains_for_date(origin, destination, date2_str, auth_token, device_key)
         
         common_trains = get_common_trains(trains_day1, trains_day2)
         
@@ -750,12 +773,7 @@ def search_trains():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-def fetch_trains_for_date(origin, destination, date_str):
-    global TOKEN
-    if not TOKEN:
-        TOKEN = fetch_token()
-        set_token(TOKEN)
-
+def fetch_trains_for_date(origin, destination, date_str, auth_token, device_key):
     url = "https://railspaapi.shohoz.com/v1.0/web/bookings/search-trips-v2"
     params = {
         'from_city': origin,
@@ -763,32 +781,21 @@ def fetch_trains_for_date(origin, destination, date_str):
         'date_of_journey': date_str,
         'seat_class': 'S_CHAIR'
     }
-    headers = {"Authorization": f"Bearer {TOKEN}"}
+    headers = {
+        "Authorization": f"Bearer {auth_token}",
+        "x-device-key": device_key
+    }
     
     max_retries = 2
     retry_count = 0
-    has_retried_with_new_token = False
     
     while retry_count < max_retries:
         try:
             response = requests.get(url, headers=headers, params=params, timeout=10)
             
-            if response.status_code == 401 and not has_retried_with_new_token:
-                try:
-                    error_data = response.json()
-                    error_messages = error_data.get("error", {}).get("messages", [])
-                    if isinstance(error_messages, list) and any("Invalid User Access Token!" in msg for msg in error_messages):
-                        TOKEN = fetch_token()
-                        set_token(TOKEN)
-                        headers["Authorization"] = f"Bearer {TOKEN}"
-                        has_retried_with_new_token = True
-                        continue
-                except ValueError:
-                    TOKEN = fetch_token()
-                    set_token(TOKEN)
-                    headers["Authorization"] = f"Bearer {TOKEN}"
-                    has_retried_with_new_token = True
-                    continue
+            if response.status_code == 401:
+                error_msg = "Invalid or expired authentication credentials. Please update your Auth Token and Device Key."
+                raise Exception(error_msg)
             
             if response.status_code == 403:
                 raise Exception("Rate limit exceeded. Please try again later.")
@@ -808,22 +815,9 @@ def fetch_trains_for_date(origin, destination, date_str):
             
         except requests.RequestException as e:
             status_code = e.response.status_code if e.response is not None else None
-            if status_code == 401 and not has_retried_with_new_token:
-                try:
-                    error_data = e.response.json()
-                    error_messages = error_data.get("error", {}).get("messages", [])
-                    if isinstance(error_messages, list) and any("Invalid User Access Token!" in msg for msg in error_messages):
-                        TOKEN = fetch_token()
-                        set_token(TOKEN)
-                        headers["Authorization"] = f"Bearer {TOKEN}"
-                        has_retried_with_new_token = True
-                        continue
-                except ValueError:
-                    TOKEN = fetch_token()
-                    set_token(TOKEN)
-                    headers["Authorization"] = f"Bearer {TOKEN}"
-                    has_retried_with_new_token = True
-                    continue
+            if status_code == 401:
+                error_msg = "Invalid or expired authentication credentials. Please update your Auth Token and Device Key."
+                raise Exception(error_msg)
                     
             if hasattr(e, 'response') and e.response and e.response.status_code == 403:
                 raise Exception("Rate limit exceeded. Please try again later.")

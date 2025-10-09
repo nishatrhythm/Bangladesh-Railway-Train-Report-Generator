@@ -4,18 +4,29 @@ A comprehensive web application to **generate detailed PDF reports** for Banglad
 
 <p align="center">
   <img src="images/Screenshot_1.jpg" alt="Home Page Interface" width="23%"/>
-  <img src="images/Screenshot_2.jpg" alt="Train Search Results" width="23%"/>
+  <img src="images/S### 3. Configure Application
+Edit `config.json` for customization:
+```json
+{
+    "version": "1.0.0",
+    "is_maintenance": 0,
+    "queue_enabled": true,
+    "is_banner_enabled": 1
+}
+```
+
+### 4. Run Applicationjpg" alt="Train Search Results" width="23%"/>
   <img src="images/Screenshot_3.jpg" alt="Report Generation" width="23%"/>
   <img src="images/Screenshot_4.jpg" alt="PDF Report Sample" width="23%"/>
 </p>
 
 ✨ **Key Features:**
 - 📋 **PDF Report Generation**: Create comprehensive train reports with detailed information
-- � **Train Search by Route**: Find trains between any two stations
+- 🔍 **Train Search by Route**: Find trains between any two stations
 - 🚄 **Complete Train Database**: All 120+ Bangladesh Railway trains supported
 - 📊 **Detailed Train Information**: Schedules, routes, classes, and timing data
 - 📱 **Mobile-Optimized Interface**: Fully responsive design for all devices
-- ⚡ **Zero Authentication Required**: No login needed for basic functionality
+- 🔐 **User Authentication**: Secure access using Auth Token and Device Key
 - ⏳ **Queue System**: Intelligent request management to prevent API overload
 - 📄 **Downloadable Reports**: High-quality PDF reports with professional formatting
 
@@ -32,16 +43,17 @@ A comprehensive web application to **generate detailed PDF reports** for Banglad
 
 1. [Project Structure](#-project-structure)  
 2. [Features Overview](#️-features-overview)  
-3. [Core Logic](#-core-logic)  
-4. [Report Generation](#-report-generation)  
-5. [Frontend Features](#️-frontend-features)  
-6. [Queue Management](#-queue-management)  
-7. [API Integration](#-api-integration)  
-8. [Cache Control](#-cache-control)  
-9. [Technologies Used](#-technologies-used)  
-10. [Setup Instructions](#-setup-instructions)  
-11. [Configuration](#️-configuration)  
-12. [License](#-license)
+3. [Authentication System](#-authentication-system)
+4. [Core Logic](#-core-logic)  
+5. [Report Generation](#-report-generation)  
+6. [Frontend Features](#️-frontend-features)  
+7. [Queue Management](#-queue-management)  
+8. [API Integration](#-api-integration)  
+9. [Cache Control](#-cache-control)  
+10. [Technologies Used](#-technologies-used)  
+11. [Setup Instructions](#-setup-instructions)  
+12. [Configuration](#️-configuration)  
+13. [License](#-license)
 
 ---
 
@@ -92,12 +104,54 @@ A comprehensive web application to **generate detailed PDF reports** for Banglad
 | Train Search by Route                    | ✅        | Find trains between any two stations |
 | Detailed Train Information               | ✅        | Complete train data including schedules and routes |
 | Real-time API Integration               | ✅        | Live data from Bangladesh Railway systems |
+| User Authentication System              | ✅        | Secure access using Auth Token and Device Key |
 | Professional PDF Formatting             | ✅        | High-quality reports with tables and styling |
 | Advanced Queue Management               | ✅        | Prevents API overload with intelligent queuing |
 | Responsive Web Interface               | ✅        | Mobile-optimized design for all devices |
 | Train Route Visualization              | ✅        | Complete route maps with station information |
 | Downloadable Reports                   | ✅        | PDF download functionality with file management |
 | Maintenance Mode Support               | ✅        | Configurable site-wide notices |
+
+---
+
+## 🔐 Authentication System
+
+### Overview
+The application uses a **client-side authentication system** where users provide their own API credentials:
+
+- **Auth Token**: Bearer token for API authorization
+- **Device Key**: Device-specific identifier for API access
+- **Local Storage**: Credentials stored securely in browser localStorage
+- **No Server Storage**: Credentials never transmitted to or stored on our servers
+
+### How It Works
+
+1. **First-Time Setup**:
+   - Users enter their Auth Token and Device Key
+   - Credentials are validated against the Bangladesh Railway API
+   - Stored locally in the browser for convenience
+
+2. **Credential Management**:
+   - Automatic credential injection in form submissions
+   - Validation before each API request
+   - Clear error messages for expired or invalid credentials
+   - Easy deletion and re-entry of credentials
+
+3. **Security Features**:
+   - HTTPS-only transmission
+   - Browser-local storage only
+   - No server-side credential persistence
+   - User-controlled credential lifecycle
+
+### Getting Your Credentials
+
+Users need to obtain their own Auth Token and Device Key from authorized sources. The application provides an instruction image to guide users through the process.
+
+**Important Notes**:
+- Keep your credentials secure and private
+- Do not share credentials with others
+- Clear browser data on shared/public devices
+- Credentials are user's responsibility
 | Session-based Form State              | ✅        | Preserves user input across requests |
 | Custom Error Handling                 | ✅        | Graceful fallbacks for API failures |
 | Social Media Integration              | ✅        | Open Graph tags for sharing |
@@ -331,7 +385,6 @@ Expires: 0
 - **ReportLab 4.0.4** - PDF generation library
 - **requests 2.32.3** - HTTP client for API calls
 - **pytz 2025.2** - Timezone handling for BST
-- **python-dotenv 1.0.1** - Environment variable management
 - **colorama 0.4.6** - Terminal color output
 - **gunicorn 23.0.0** - WSGI server for production deployment
 - **Structured Logging** - INFO level logging with timestamp and user activity tracking
@@ -371,14 +424,7 @@ cd Bangladesh-Railway-Train-Report-Generator
 pip install -r requirements.txt
 ```
 
-### 3. Environment Configuration
-Create a `.env` file in the root directory:
-```env
-FIXED_MOBILE_NUMBER=your_mobile_number
-FIXED_PASSWORD=your_password
-```
-
-### 4. Configure Application
+### 3. Configure Application
 Edit `config.json` for customization:
 ```json
 {
@@ -389,7 +435,7 @@ Edit `config.json` for customization:
 }
 ```
 
-### 5. Run Application
+### 4. Run Application
 ```bash
 python app.py
 ```
@@ -409,7 +455,7 @@ The application will display structured logs including:
 - PDF generation and file management operations
 - Error tracking and system health monitoring
 
-### 6. Access Application
+### 5. Access Application
 Visit `http://localhost:5000` in your browser
 
 ---
