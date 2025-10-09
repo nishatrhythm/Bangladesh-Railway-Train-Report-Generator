@@ -188,6 +188,16 @@ if os.path.exists(instruction_image_path):
     except Exception:
         pass
 
+mobile_instruction_image_path = 'static/images/mobile_instruction.png'
+DEFAULT_MOBILE_INSTRUCTION_IMAGE = ""
+if os.path.exists(mobile_instruction_image_path):
+    try:
+        with open(mobile_instruction_image_path, 'rb') as img_file:
+            encoded_image = base64.b64encode(img_file.read()).decode('utf-8')
+            DEFAULT_MOBILE_INSTRUCTION_IMAGE = f"data:image/png;base64,{encoded_image}"
+    except Exception:
+        pass
+
 def configure_request_queue():
     max_concurrent = CONFIG.get("queue_max_concurrent", 1)
     cooldown_period = CONFIG.get("queue_cooldown_period", 3)
@@ -283,6 +293,7 @@ def home():
         is_banner_enabled=CONFIG.get("is_banner_enabled", 0),
         banner_image=banner_image,
         instruction_image=DEFAULT_INSTRUCTION_IMAGE,
+        mobile_instruction_image=DEFAULT_MOBILE_INSTRUCTION_IMAGE,
         min_date=min_date.strftime("%Y-%m-%d"),
         max_date=max_date.strftime("%Y-%m-%d"),
         bst_midnight_utc=bst_midnight_utc,

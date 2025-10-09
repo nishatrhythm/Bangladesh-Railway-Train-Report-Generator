@@ -279,6 +279,53 @@ function setupInstructionImageLink() {
     });
 }
 
+function setupMobileInstructionImageLink() {
+    const mobileInstructionLink = document.getElementById('mobileInstructionImageLink');
+    if (!mobileInstructionLink) return;
+    
+    const configData = JSON.parse(document.getElementById('app-config').textContent);
+    const appVersion = configData.version || "1.0.0";
+    const currentImageUrl = window.mobileInstructionImageUrl;
+    
+    if (!currentImageUrl) return;
+    
+    // Load from cache or use current URL
+    const cachedImageData = localStorage.getItem('mobileInstructionImageData');
+    let imageUrl = currentImageUrl;
+    
+    if (cachedImageData) {
+        const parsedCache = JSON.parse(cachedImageData);
+        if (parsedCache.version === appVersion) {
+            imageUrl = parsedCache.base64;
+        }
+    } else {
+        // Cache the image
+        localStorage.setItem('mobileInstructionImageData', JSON.stringify({
+            base64: currentImageUrl,
+            version: appVersion
+        }));
+    }
+    
+    mobileInstructionLink.addEventListener('click', function(e) {
+        e.preventDefault();
+        
+        const base64Data = imageUrl.split(',')[1];
+        const mimeType = imageUrl.split(',')[0].split(':')[1].split(';')[0];
+        const byteCharacters = atob(base64Data);
+        const byteNumbers = new Array(byteCharacters.length);
+        
+        for (let i = 0; i < byteCharacters.length; i++) {
+            byteNumbers[i] = byteCharacters.charCodeAt(i);
+        }
+        
+        const byteArray = new Uint8Array(byteNumbers);
+        const blob = new Blob([byteArray], { type: mimeType });
+        const blobUrl = URL.createObjectURL(blob);
+        
+        window.open(blobUrl, '_blank');
+    });
+}
+
 function loadTrains() {
     return new Promise((resolve) => {
         const cachedTrains = localStorage.getItem('railwayTrains');
@@ -926,6 +973,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     initAuthCredentials();
     setupInstructionImageLink();
+    setupMobileInstructionImageLink();
     
     await loadTrains();
     await loadStations();
