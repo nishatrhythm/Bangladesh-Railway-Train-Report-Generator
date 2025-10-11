@@ -805,11 +805,21 @@ def fetch_trains_for_date(origin, destination, date_str, auth_token, device_key)
             response = requests.get(url, headers=headers, params=params, timeout=10)
             
             if response.status_code == 401:
-                error_msg = "Invalid or expired authentication credentials. Please update your Auth Token and Device Key."
-                raise Exception(error_msg)
+                try:
+                    error_data = response.json()
+                    error_messages = error_data.get("error", {}).get("messages", [])
+                    if isinstance(error_messages, list):
+                        for msg in error_messages:
+                            if "You are not authorized for this request" in msg or "Please login first" in msg:
+                                raise Exception("AUTH_DEVICE_KEY_EXPIRED")
+                            elif "Invalid User Access Token!" in msg:
+                                raise Exception("AUTH_TOKEN_EXPIRED")
+                    raise Exception("AUTH_TOKEN_EXPIRED")
+                except ValueError:
+                    raise Exception("AUTH_TOKEN_EXPIRED")
             
             if response.status_code == 403:
-                raise Exception("Rate limit exceeded. Please try again later.")
+                raise Exception("Currently we are experiencing high traffic. Please try again after some time.")
                 
             if response.status_code >= 500:
                 retry_count += 1
@@ -827,11 +837,21 @@ def fetch_trains_for_date(origin, destination, date_str, auth_token, device_key)
         except requests.RequestException as e:
             status_code = e.response.status_code if e.response is not None else None
             if status_code == 401:
-                error_msg = "Invalid or expired authentication credentials. Please update your Auth Token and Device Key."
-                raise Exception(error_msg)
+                try:
+                    error_data = e.response.json()
+                    error_messages = error_data.get("error", {}).get("messages", [])
+                    if isinstance(error_messages, list):
+                        for msg in error_messages:
+                            if "You are not authorized for this request" in msg or "Please login first" in msg:
+                                raise Exception("AUTH_DEVICE_KEY_EXPIRED")
+                            elif "Invalid User Access Token!" in msg:
+                                raise Exception("AUTH_TOKEN_EXPIRED")
+                    raise Exception("AUTH_TOKEN_EXPIRED")
+                except ValueError:
+                    raise Exception("AUTH_TOKEN_EXPIRED")
                     
             if hasattr(e, 'response') and e.response and e.response.status_code == 403:
-                raise Exception("Rate limit exceeded. Please try again later.")
+                raise Exception("Currently we are experiencing high traffic. Please try again after some time.")
             retry_count += 1
             if retry_count == max_retries:
                 return []

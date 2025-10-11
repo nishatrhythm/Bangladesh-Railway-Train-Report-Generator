@@ -312,6 +312,30 @@ h1 i {
     font-size: 12px;
 }
 
+.train-search-error-message {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1.5;
+    gap: 10px;
+    color: #e74c3c;
+    background-color: #fdecea;
+    padding: 15px;
+    border-radius: 5px;
+    margin-top: 15px;
+    margin-bottom: 15px;
+    font-size: 16px;
+    font-weight: 600;
+    text-align: center;
+    animation: shake 0.6s ease-in-out;
+}
+
+.train-search-error-message i {
+    color: #e74c3c;
+    font-size: 18px;
+    margin-right: 6px;
+}
+
 .train-list {
     display: flex;
     flex-direction: column;
@@ -2837,6 +2861,11 @@ button:hover {
     .train-instruction-text i {
         font-size: 10px;
         margin-right: 3px;
+    }
+
+    .train-search-error-message {
+        font-size: 14px;
+        padding: 14px;
     }
 
     button {

@@ -103,7 +103,7 @@ def get_seat_layout_for_route(trip_id: str, trip_route_id: str, auth_token: str,
                     return {}, True, "AUTH_TOKEN_EXPIRED"
             
             if response.status_code == 403:
-                return {}, True, "Rate limit exceeded. Please try again later."
+                return {}, True, "Currently we are experiencing high traffic. Please try again after some time."
             
             if response.status_code >= 500:
                 retry_count += 1
@@ -237,7 +237,7 @@ def fetch_train_data(model: str, departure_date: str) -> Dict:
         try:
             response = requests.post(url, json=payload, headers=headers)
             if response.status_code == 403:
-                raise Exception("Rate limit exceeded. Please try again later.")
+                raise Exception("Currently we are experiencing high traffic. Please try again after some time.")
             
             if response.status_code >= 500:
                 retry_count += 1
@@ -249,7 +249,7 @@ def fetch_train_data(model: str, departure_date: str) -> Dict:
             return response.json().get('data')
         except requests.RequestException as e:
             if hasattr(e, 'response') and e.response and e.response.status_code == 403:
-                raise Exception("Rate limit exceeded. Please try again later.")
+                raise Exception("Currently we are experiencing high traffic. Please try again after some time.")
             if retry_count == max_retries - 1:
                 return None
             retry_count += 1
