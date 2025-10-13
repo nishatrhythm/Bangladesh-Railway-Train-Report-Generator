@@ -1,9 +1,9 @@
 {
-    "version": "1.0.11",
+    "version": "1.0.12",
     "is_maintenance": 0,
     "maintenance_message": "This service is currently unavailable. We're working to restore it as soon as possible. Thank you for your patience.",
     "is_banner_enabled": 1,
-    "image_link": "",
-    "force_banner": 0,
+    "image_link": "https://raw.githubusercontent.com/nishatrhythm/Bangladesh-Railway-Train-Seat-Matrix-Web-Application/main/static/images/discontinued-notice.png",
+    "force_banner": 1,
     "queue_enabled": true
 }
