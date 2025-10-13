@@ -88,6 +88,16 @@ def get_seat_layout_for_route(trip_id: str, trip_route_id: str, auth_token: str,
         try:
             response = requests.get(url, headers=headers, params=params)
             
+            if response.status_code == 429:
+                try:
+                    error_data = response.json()
+                    error_messages = error_data.get("error", {}).get("messages", [])
+                    if isinstance(error_messages, list) and error_messages:
+                        return {}, True, error_messages[0]
+                    return {}, True, "Too many requests. Please slow down."
+                except ValueError:
+                    return {}, True, "Too many requests. Please slow down."
+            
             if response.status_code == 401:
                 try:
                     error_data = response.json()
@@ -117,6 +127,17 @@ def get_seat_layout_for_route(trip_id: str, trip_route_id: str, auth_token: str,
             
         except requests.RequestException as e:
             status_code = e.response.status_code if e.response is not None else None
+            
+            if status_code == 429:
+                try:
+                    error_data = e.response.json()
+                    error_messages = error_data.get("error", {}).get("messages", [])
+                    if isinstance(error_messages, list) and error_messages:
+                        return {}, True, error_messages[0]
+                    return {}, True, "Too many requests. Please slow down."
+                except ValueError:
+                    return {}, True, "Too many requests. Please slow down."
+            
             if status_code == 401:
                 try:
                     error_data = e.response.json()
@@ -160,6 +181,16 @@ def get_route_availability(from_city: str, to_city: str, date_str: str, target_m
         try:
             response = requests.get(url, headers=headers, params=params)
             
+            if response.status_code == 429:
+                try:
+                    error_data = response.json()
+                    error_messages = error_data.get("error", {}).get("messages", [])
+                    if isinstance(error_messages, list) and error_messages:
+                        raise Exception(error_messages[0])
+                    raise Exception("Too many requests. Please slow down.")
+                except ValueError:
+                    raise Exception("Too many requests. Please slow down.")
+            
             if response.status_code == 401:
                 try:
                     error_data = response.json()
@@ -202,6 +233,17 @@ def get_route_availability(from_city: str, to_city: str, date_str: str, target_m
             
         except requests.RequestException as e:
             status_code = e.response.status_code if e.response is not None else None
+            
+            if status_code == 429:
+                try:
+                    error_data = e.response.json()
+                    error_messages = error_data.get("error", {}).get("messages", [])
+                    if isinstance(error_messages, list) and error_messages:
+                        raise Exception(error_messages[0])
+                    raise Exception("Too many requests. Please slow down.")
+                except ValueError:
+                    raise Exception("Too many requests. Please slow down.")
+            
             if status_code == 401:
                 try:
                     error_data = e.response.json()
@@ -236,6 +278,17 @@ def fetch_train_data(model: str, departure_date: str) -> Dict:
     while retry_count < max_retries:
         try:
             response = requests.post(url, json=payload, headers=headers)
+            
+            if response.status_code == 429:
+                try:
+                    error_data = response.json()
+                    error_messages = error_data.get("error", {}).get("messages", [])
+                    if isinstance(error_messages, list) and error_messages:
+                        raise Exception(error_messages[0])
+                    raise Exception("Too many requests. Please slow down.")
+                except ValueError:
+                    raise Exception("Too many requests. Please slow down.")
+            
             if response.status_code == 403:
                 raise Exception("Currently we are experiencing high traffic. Please try again after some time.")
             
@@ -248,8 +301,18 @@ def fetch_train_data(model: str, departure_date: str) -> Dict:
             response.raise_for_status()
             return response.json().get('data')
         except requests.RequestException as e:
-            if hasattr(e, 'response') and e.response and e.response.status_code == 403:
-                raise Exception("Currently we are experiencing high traffic. Please try again after some time.")
+            if hasattr(e, 'response') and e.response:
+                if e.response.status_code == 429:
+                    try:
+                        error_data = e.response.json()
+                        error_messages = error_data.get("error", {}).get("messages", [])
+                        if isinstance(error_messages, list) and error_messages:
+                            raise Exception(error_messages[0])
+                        raise Exception("Too many requests. Please slow down.")
+                    except ValueError:
+                        raise Exception("Too many requests. Please slow down.")
+                if e.response.status_code == 403:
+                    raise Exception("Currently we are experiencing high traffic. Please try again after some time.")
             if retry_count == max_retries - 1:
                 return None
             retry_count += 1
@@ -293,16 +356,13 @@ class NumberedCanvas(canvas.Canvas):
         self.setFont(self.page_font, 10)
         self.setFillColor(self.primary_green)
         
-        # Enhanced page footer with professional styling
         page_text = f"Page {page_num} of {total_pages}"
         footer_text = f"Bangladesh Railway Report Generator  •  {page_text}  •  Generated on {datetime.now(pytz.timezone('Asia/Dhaka')).strftime('%d %B %Y')}"
         
-        # Draw a line above the footer
         self.setStrokeColor(self.primary_green)
         self.setLineWidth(0.5)
         self.line(40, 45, A4[0] - 40, 45)
         
-        # Draw the footer text
         self.setFont(self.page_font, 8)
         self.drawCentredString(A4[0]/2, 32, footer_text)
 
@@ -387,15 +447,13 @@ def generate_pdf_report(issued_matrices: Dict, fare_matrices: Dict, stations: Li
                               rightMargin=40, leftMargin=40, 
                               topMargin=40, bottomMargin=40)
         
-        # Professional color scheme using website primary color
-        primary_green = colors.Color(0x00/255.0, 0x67/255.0, 0x47/255.0)  # Website primary color #006747
-        secondary_green = colors.Color(0x28/255.0, 0x8A/255.0, 0x5C/255.0)  # Lighter green
-        light_green = colors.Color(0xE8/255.0, 0xF5/255.0, 0xF0/255.0)  # Very light green
-        accent_gray = colors.Color(0x6C/255.0, 0x75/255.0, 0x7D/255.0)  # Professional gray
+        primary_green = colors.Color(0x00/255.0, 0x67/255.0, 0x47/255.0) 
+        secondary_green = colors.Color(0x28/255.0, 0x8A/255.0, 0x5C/255.0)
+        light_green = colors.Color(0xE8/255.0, 0xF5/255.0, 0xF0/255.0)
+        accent_gray = colors.Color(0x6C/255.0, 0x75/255.0, 0x7D/255.0)
         
         styles = getSampleStyleSheet()
         
-        # Enhanced title style with professional design
         title_style = ParagraphStyle(
             'CustomTitle',
             parent=styles['Heading1'],
@@ -408,7 +466,6 @@ def generate_pdf_report(issued_matrices: Dict, fare_matrices: Dict, stations: Li
             leading=28
         )
         
-        # Subtitle style for train name
         subtitle_style = ParagraphStyle(
             'SubtitleStyle',
             parent=styles['Normal'],
@@ -432,7 +489,6 @@ def generate_pdf_report(issued_matrices: Dict, fare_matrices: Dict, stations: Li
             leftIndent=0
         )
         
-        # Enhanced section title style with full width matching table width
         section_title_style = ParagraphStyle(
             'SectionTitleStyle',
             parent=styles['Heading2'],
@@ -458,12 +514,10 @@ def generate_pdf_report(issued_matrices: Dict, fare_matrices: Dict, stations: Li
         
         story = []
         
-        # Professional header without unsupported emojis
         story.append(Paragraph("BANGLADESH RAILWAY", title_style))
         story.append(Paragraph("ISSUED TICKETS REPORT", subtitle_style))
 
         
-        # Professional disclaimer with better styling and full width
         disclaimer_style = ParagraphStyle(
             'DisclaimerStyle',
             parent=styles['Normal'],
@@ -486,7 +540,6 @@ def generate_pdf_report(issued_matrices: Dict, fare_matrices: Dict, stations: Li
                           "Data accuracy is not guaranteed and is not officially affiliated with Bangladesh Railway. "
                           "Please verify all information independently before making any decisions.")
         
-        # Create disclaimer as a table to ensure full width
         disclaimer_table = Table([[Paragraph(disclaimer_text, disclaimer_style)]], colWidths=[7.2*inch])
         disclaimer_table.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, -1), colors.Color(1.0, 0.98, 0.98)),
@@ -500,7 +553,6 @@ def generate_pdf_report(issued_matrices: Dict, fare_matrices: Dict, stations: Li
         story.append(disclaimer_table)
         story.append(Spacer(1, 20))
         
-        # Enhanced report information section
         github_url = "https://github.com/nishatrhythm/Bangladesh-Railway-Train-Report-Generator"
         github_link = f'<a href="{github_url}" color="blue">GitHub Repository</a>'
 
@@ -529,7 +581,6 @@ def generate_pdf_report(issued_matrices: Dict, fare_matrices: Dict, stations: Li
             else:
                 config_table_data.append([Paragraph(key, info_style), Paragraph(str(value), info_style)])
         
-        # Enhanced configuration table design
         config_table = Table(config_table_data, colWidths=[2.2*inch, 3.3*inch])
         config_table.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, -1), light_green),
@@ -551,7 +602,6 @@ def generate_pdf_report(issued_matrices: Dict, fare_matrices: Dict, stations: Li
         story.append(config_table)
         story.append(Spacer(1, 30))
         
-        # Enhanced stations section
         story.append(Paragraph("TRAIN ROUTE STATIONS", heading_style))
         story.append(Spacer(1, 10))
         
@@ -584,8 +634,6 @@ def generate_pdf_report(issued_matrices: Dict, fare_matrices: Dict, stations: Li
         story.append(stations_table)
         story.append(PageBreak())
         
-        
-        # Enhanced overall summary section with full width header and proper centering
         summary_header_para = Paragraph("OVERALL SUMMARY", ParagraphStyle(
             'SummaryHeaderPara',
             parent=styles['Normal'],
@@ -664,7 +712,6 @@ def generate_pdf_report(issued_matrices: Dict, fare_matrices: Dict, stations: Li
         
         route_summary, seat_types_with_data = create_route_summary_data(issued_matrices, fare_matrices, stations)
         
-        # Enhanced route-wise summary section with full width header and proper centering
         route_header_para = Paragraph("ROUTE-WISE ISSUED TICKET SUMMARY", ParagraphStyle(
             'RouteHeaderPara',
             parent=styles['Normal'],
@@ -812,8 +859,6 @@ def generate_pdf_report(issued_matrices: Dict, fare_matrices: Dict, stations: Li
         
         story.append(PageBreak())
         
-        
-        # Enhanced detailed seat matrix sections
         for seat_type in seat_types:
             has_issued_tickets = any(
                 any(len(seats) > 0 for seats in from_routes.values())
@@ -821,7 +866,6 @@ def generate_pdf_report(issued_matrices: Dict, fare_matrices: Dict, stations: Li
             )
             
             if has_issued_tickets:
-                # Enhanced matrix title style with full width and proper centering
                 matrix_header_para = Paragraph(f"ISSUED TICKETS — {seat_type}", ParagraphStyle(
                     'MatrixHeaderPara',
                     parent=styles['Normal'],
