@@ -1,21 +1,17 @@
 # 🚆 Bangladesh Railway Train Report Generator
+<br><br>
+
+| 🚨 PROJECT DISCONTINUATION NOTICE 🚨 |
+|-------------------------------------|
+| Starting **October 14, 2025**, this project is **discontinued** and **no longer maintained**. All resources are archived now.<br><br>Thank you for your support over the long journey. Visit [trainseat.onrender.com/sunset](https://trainseat.onrender.com/sunset) to learn more about why this project was discontinued. |
+
+<br><br>
 
 A comprehensive web application to **generate detailed PDF reports** for Bangladesh Railway trains. This application provides **train information, route data, schedules, and downloadable reports** — built using Flask, ReportLab, and REST APIs.
 
 <p align="center">
   <img src="images/Screenshot_1.jpg" alt="Home Page Interface" width="23%"/>
-  <img src="images/S### 3. Configure Application
-Edit `config.json` for customization:
-```json
-{
-    "version": "1.0.0",
-    "is_maintenance": 0,
-    "queue_enabled": true,
-    "is_banner_enabled": 1
-}
-```
-
-### 4. Run Applicationjpg" alt="Train Search Results" width="23%"/>
+  <img src="images/Screenshot_2.jpg" alt="Train Search Results" width="23%"/>
   <img src="images/Screenshot_3.jpg" alt="Report Generation" width="23%"/>
   <img src="images/Screenshot_4.jpg" alt="PDF Report Sample" width="23%"/>
 </p>
@@ -111,6 +107,12 @@ Edit `config.json` for customization:
 | Train Route Visualization              | ✅        | Complete route maps with station information |
 | Downloadable Reports                   | ✅        | PDF download functionality with file management |
 | Maintenance Mode Support               | ✅        | Configurable site-wide notices |
+| Session-based Form State              | ✅        | Preserves user input across requests |
+| Custom Error Handling                 | ✅        | Graceful fallbacks for API failures |
+| Social Media Integration              | ✅        | Open Graph tags for sharing |
+| Cache-Control Headers                 | ✅        | Ensures fresh data on every request |
+| User Activity Logging                 | ✅        | Comprehensive logging of user interactions and system events |
+| PDF File Management                   | ✅        | Automatic cleanup of generated reports |
 
 ---
 
@@ -152,12 +154,6 @@ Users need to obtain their own Auth Token and Device Key from authorized sources
 - Do not share credentials with others
 - Clear browser data on shared/public devices
 - Credentials are user's responsibility
-| Session-based Form State              | ✅        | Preserves user input across requests |
-| Custom Error Handling                 | ✅        | Graceful fallbacks for API failures |
-| Social Media Integration              | ✅        | Open Graph tags for sharing |
-| Cache-Control Headers                 | ✅        | Ensures fresh data on every request |
-| User Activity Logging                 | ✅        | Comprehensive logging of user interactions and system events |
-| PDF File Management                   | ✅        | Automatic cleanup of generated reports |
 
 ---
 
@@ -424,7 +420,14 @@ cd Bangladesh-Railway-Train-Report-Generator
 pip install -r requirements.txt
 ```
 
-### 3. Configure Application
+### 3. Environment Configuration
+Create a `.env` file in the root directory:
+```env
+FIXED_MOBILE_NUMBER=your_mobile_number
+FIXED_PASSWORD=your_password
+```
+
+### 4. Configure Application
 Edit `config.json` for customization:
 ```json
 {
@@ -435,7 +438,7 @@ Edit `config.json` for customization:
 }
 ```
 
-### 4. Run Application
+### 5. Run Application
 ```bash
 python app.py
 ```
@@ -455,7 +458,7 @@ The application will display structured logs including:
 - PDF generation and file management operations
 - Error tracking and system health monitoring
 
-### 5. Access Application
+### 6. Access Application
 Visit `http://localhost:5000` in your browser
 
 ---
